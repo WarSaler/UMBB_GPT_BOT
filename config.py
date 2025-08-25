@@ -155,21 +155,7 @@ class Config:
         """Путь к файлу логов"""
         return os.getenv('LOG_FILE_PATH', 'logs/bot.log')
     
-    # === RATE LIMITING SETTINGS ===
-    @property
-    def rate_limit_enabled(self) -> bool:
-        """Включено ли ограничение скорости"""
-        return os.getenv('RATE_LIMIT_ENABLED', 'true').lower() == 'true'
-    
-    @property
-    def rate_limit_requests_per_minute(self) -> int:
-        """Количество запросов в минуту на пользователя"""
-        return int(os.getenv('RATE_LIMIT_REQUESTS_PER_MINUTE', '10'))
-    
-    @property
-    def rate_limit_requests_per_hour(self) -> int:
-        """Количество запросов в час на пользователя"""
-        return int(os.getenv('RATE_LIMIT_REQUESTS_PER_HOUR', '100'))
+
     
     # === CACHE SETTINGS ===
     @property
@@ -279,7 +265,7 @@ class Config:
             'webhook_enabled': bool(self.get_webhook_url()),
             'keep_alive_enabled': self.keep_alive_enabled,
             'cache_enabled': self.cache_enabled,
-            'rate_limit_enabled': self.rate_limit_enabled,
+
             'log_level': self.log_level,
             'openai_model': self.openai_model,
             'translation_service': self.translation_service,
@@ -345,15 +331,14 @@ class Config:
             },
             'Features': {
                 'Keep Alive': 'Enabled' if self.keep_alive_enabled else 'Disabled',
-                'Rate Limiting': 'Enabled' if self.rate_limit_enabled else 'Disabled',
+
                 'Caching': 'Enabled' if self.cache_enabled else 'Disabled',
                 'File Logging': 'Enabled' if self.log_file_enabled else 'Disabled'
             },
             'Limits': {
                 'Max Image Size': f"{self.max_image_size // 1024 // 1024} MB",
                 'Supported Formats': ', '.join(self.supported_image_formats),
-                'Requests/Min': self.rate_limit_requests_per_minute,
-                'Requests/Hour': self.rate_limit_requests_per_hour
+
             }
         }
         

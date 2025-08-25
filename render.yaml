@@ -59,12 +59,7 @@ services:
         value: INFO
       - key: LOG_FILE_ENABLED
         value: false
-      - key: RATE_LIMIT_ENABLED
-        value: true
-      - key: RATE_LIMIT_REQUESTS_PER_MINUTE
-        value: 10
-      - key: RATE_LIMIT_REQUESTS_PER_HOUR
-        value: 100
+
       - key: CACHE_ENABLED
         value: false
       - key: DEBUG
@@ -264,13 +259,7 @@ services:
         - image/bmp
         - image/tiff
         - image/webp
-    # Настройки лимитов запросов
-    rateLimiting:
-      enabled: true
-      requests: 100
-      window: 3600  # 1 час
-      skipSuccessfulRequests: false
-      skipFailedRequests: false
+
     # Настройки для мониторинга производительности
     performance:
       monitoring: true
