@@ -3,7 +3,7 @@ services:
     name: umbb-gpt-bot
     env: python
     plan: free
-    buildCommand: pip3 install --upgrade pip && pip3 install --force-reinstall python-telegram-bot==21.0.1 && pip3 list | grep -i telegram && python3 -c "import telegram; print('telegram module imported successfully')"
+    buildCommand: pip3 install --upgrade pip && pip3 install -r requirements.txt && pip3 install --force-reinstall python-telegram-bot==21.0.1 && pip3 list | grep -i telegram && python3 -c "import telegram; print('telegram module imported successfully')"
     startCommand: python3 bot.py
     envVars:
       - key: PYTHON_VERSION
