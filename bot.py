@@ -39,7 +39,7 @@ except ImportError as e:
     logger.info("🔄 Работаем в режиме HTTP сервера")
 
 # Получение переменных окружения
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('BOT_TOKEN')
 PORT = int(os.getenv('PORT', 10000))
 
 # HTTP сервер как fallback
