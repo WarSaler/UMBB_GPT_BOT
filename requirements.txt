@@ -1,22 +1,21 @@
 # Telegram Bot Dependencies
-pyTelegramBotAPI==4.14.0
-telebot==0.0.5
+pyTelegramBotAPI>=4.14.0
 
 # OpenAI API
-openai==1.12.0
+openai>=1.12.0
 
 # Image Processing and OCR
-Pillow==10.2.0
-pytesseract==0.3.10
-easyocr==1.7.0
-opencv-python==4.9.0.80
+Pillow>=10.3.0
+pytesseract>=0.3.10
+easyocr>=1.7.0
+opencv-python-headless>=4.9.0.80
 
 # Translation
 googletrans==4.0.0rc1
 
 # Web Server for Render
-Flask==3.0.0
-requests==2.31.0
+Flask>=3.0.0
+requests>=2.31.0
 
 # Environment Variables
 python-dotenv==1.0.0

@@ -3,18 +3,12 @@ services:
     name: umbb-gpt-bot
     env: python
     plan: free
-    buildCommand: |
-      pip install --upgrade pip
-      pip install -r requirements.txt
-      # Установка системных зависимостей для OCR
-      apt-get update
-      apt-get install -y tesseract-ocr tesseract-ocr-rus tesseract-ocr-eng tesseract-ocr-deu tesseract-ocr-fra tesseract-ocr-spa tesseract-ocr-ita tesseract-ocr-por tesseract-ocr-chi-sim tesseract-ocr-jpn tesseract-ocr-kor
-      apt-get install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libgthread-2.0-0
+    buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.11
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: OPENAI_API_KEY
@@ -46,7 +40,7 @@ services:
       - key: DEFAULT_SOURCE_LANG
         value: auto
       - key: DEFAULT_TARGET_LANG
-        value: ru
+        value: en
       - key: TRANSLATION_SERVICE
         value: google
       - key: MAX_IMAGE_SIZE
