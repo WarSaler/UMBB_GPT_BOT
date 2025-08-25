@@ -7,9 +7,11 @@ services:
       echo "🔧 Установка зависимостей:"
       pip install -r requirements.txt
       echo "✅ Проверка установленных пакетов:"
-      pip list | grep -E "(loguru|python-dotenv)"
-      echo "🧪 Тестирование HTTP сервера:"
-      python3 -c "import bot; print('✅ HTTP сервер загружен без ошибок')"
+      pip list | grep -E "(telegram|fastapi|uvicorn|loguru|python-dotenv)"
+      echo "🧪 Тестирование импортов:"
+      python3 -c "import telegram; print('✅ Telegram импортирован')"
+      python3 -c "import fastapi; print('✅ FastAPI импортирован')"
+      python3 -c "import uvicorn; print('✅ Uvicorn импортирован')"
       echo "🎉 Сборка завершена успешно!"
     startCommand: python3 bot.py
     envVars:

@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Telegram Bot на основе python-telegram-bot 21.0.1
-Полностью асинхронный бот с правильными импортами
+Telegram Bot с поддержкой Webhooks для Render
+Использует FastAPI для обработки webhook запросов
 """
 
 import os
-import sys
 import asyncio
 import logging
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from threading import Thread
+from typing import Optional
 
 # Настройка логирования
 logging.basicConfig(
@@ -27,6 +25,17 @@ try:
 except ImportError:
     logger.warning("python-dotenv не найден, используем системные переменные")
 
+# Импорт необходимых модулей
+try:
+    import uvicorn
+    from fastapi import FastAPI, Request, HTTPException
+    from fastapi.responses import PlainTextResponse, HTMLResponse
+    fastapi_available = True
+    logger.info("✅ FastAPI модули успешно импортированы")
+except ImportError as e:
+    fastapi_available = False
+    logger.error(f"❌ Ошибка импорта FastAPI: {e}")
+
 # Импорт Telegram модулей
 try:
     from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -36,39 +45,65 @@ try:
 except ImportError as e:
     telegram_available = False
     logger.error(f"❌ Ошибка импорта telegram: {e}")
-    logger.info("🔄 Работаем в режиме HTTP сервера")
 
 # Получение переменных окружения
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('BOT_TOKEN')
 PORT = int(os.getenv('PORT', 10000))
+WEBHOOK_URL = os.getenv('RENDER_EXTERNAL_URL', f'https://umbb-gpt-bot.onrender.com')
 
-# HTTP сервер как fallback
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html; charset=utf-8')
-        self.end_headers()
-        
-        response = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Telegram Bot Status</title>
-            <meta charset="utf-8">
-        </head>
-        <body>
-            <h1>🤖 Telegram Bot Server</h1>
-            <p>Сервер работает на порту {PORT}</p>
-            <p>Статус: {'Telegram доступен' if telegram_available else 'HTTP режим'}</p>
-            <p>Токен: {'Настроен' if BOT_TOKEN else 'Не найден'}</p>
-        </body>
-        </html>
-        """
-        
-        self.wfile.write(response.encode('utf-8'))
+# Глобальная переменная для приложения Telegram
+telegram_app: Optional[Application] = None
+
+# Создание FastAPI приложения
+app = FastAPI(title="Telegram Bot Webhook")
+
+@app.get("/")
+async def root():
+    """Главная страница для проверки статуса"""
+    return HTMLResponse(content=f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Telegram Bot Status</title>
+        <meta charset="utf-8">
+    </head>
+    <body>
+        <h1>🤖 Telegram Bot Server</h1>
+        <p>Сервер работает на порту {PORT}</p>
+        <p>Статус Telegram: {'✅ Доступен' if telegram_available else '❌ Недоступен'}</p>
+        <p>Статус FastAPI: {'✅ Доступен' if fastapi_available else '❌ Недоступен'}</p>
+        <p>Токен: {'✅ Настроен' if BOT_TOKEN else '❌ Не найден'}</p>
+        <p>Webhook URL: {WEBHOOK_URL}</p>
+    </body>
+    </html>
+    """)
+
+@app.get("/health")
+@app.get("/healthcheck")
+async def health_check():
+    """Health check endpoint для Render"""
+    return PlainTextResponse("OK - Bot is running")
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    """Обработка webhook запросов от Telegram"""
+    if not telegram_available or not telegram_app:
+        raise HTTPException(status_code=503, detail="Telegram bot not available")
     
-    def log_message(self, format, *args):
-        logger.info(f"HTTP: {format % args}")
+    try:
+        # Получаем JSON данные от Telegram
+        json_data = await request.json()
+        
+        # Создаем Update объект
+        update = Update.de_json(json_data, telegram_app.bot)
+        
+        # Добавляем update в очередь для обработки
+        await telegram_app.update_queue.put(update)
+        
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Ошибка обработки webhook: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Telegram Bot функции
 if telegram_available:
@@ -146,63 +181,82 @@ if telegram_available:
                 parse_mode='Markdown'
             )
 
-def run_http_server():
-    """Запуск HTTP сервера"""
-    try:
-        server = HTTPServer(('0.0.0.0', PORT), SimpleHandler)
-        logger.info(f"🌐 HTTP сервер запущен на порту {PORT}")
-        server.serve_forever()
-    except Exception as e:
-        logger.error(f"❌ Ошибка HTTP сервера: {e}")
-
-async def run_telegram_bot():
-    """Запуск Telegram бота"""
+async def setup_telegram_bot():
+    """Настройка Telegram бота с webhook"""
+    global telegram_app
+    
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN не найден в переменных окружения")
+        logger.error("❌ TELEGRAM_BOT_TOKEN не найден!")
         return False
-        
+    
+    if not telegram_available:
+        logger.error("❌ Telegram модули недоступны!")
+        return False
+    
     try:
-        # Создание приложения
-        app = Application.builder().token(BOT_TOKEN).build()
+        # Создание приложения без updater (для webhook)
+        telegram_app = Application.builder().token(BOT_TOKEN).updater(None).build()
         
         # Добавление обработчиков
-        app.add_handler(CommandHandler("start", start_command))
-        app.add_handler(CommandHandler("help", help_command))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-        app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-        app.add_handler(CallbackQueryHandler(button_callback))
+        telegram_app.add_handler(CommandHandler("start", start_command))
+        telegram_app.add_handler(CommandHandler("help", help_command))
+        telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        telegram_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+        telegram_app.add_handler(CallbackQueryHandler(button_callback))
         
-        logger.info("🚀 Запуск Telegram бота...")
+        # Инициализация приложения
+        await telegram_app.initialize()
+        await telegram_app.start()
         
-        # Запуск в режиме polling
-        await app.run_polling(drop_pending_updates=True)
+        # Установка webhook
+        webhook_url = f"{WEBHOOK_URL}/webhook"
+        await telegram_app.bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=Update.ALL_TYPES
+        )
         
+        logger.info(f"✅ Telegram бот настроен с webhook: {webhook_url}")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Ошибка запуска Telegram бота: {e}")
+        logger.error(f"❌ Ошибка настройки Telegram бота: {e}")
         return False
+
+async def run_server():
+    """Запуск FastAPI сервера"""
+    if not fastapi_available:
+        logger.error("❌ FastAPI недоступен!")
+        return
+    
+    # Настройка Telegram бота
+    await setup_telegram_bot()
+    
+    # Запуск FastAPI сервера
+    config = uvicorn.Config(
+        app=app,
+        host="0.0.0.0",
+        port=PORT,
+        log_level="info"
+    )
+    server = uvicorn.Server(config)
+    
+    logger.info(f"🚀 Запуск FastAPI сервера на порту {PORT}")
+    await server.serve()
 
 def main():
     """Главная функция"""
-    logger.info("🤖 Запуск бота...")
+    logger.info("🤖 Запуск Telegram бота с webhook поддержкой...")
     
-    # Проверяем доступность Telegram модулей и токена
-    if telegram_available and BOT_TOKEN:
-        logger.info("✅ Запуск в режиме Telegram бота")
-        try:
-            asyncio.run(run_telegram_bot())
-        except Exception as e:
-            logger.error(f"❌ Ошибка Telegram бота: {e}")
-            logger.info("🔄 Переключение на HTTP сервер")
-            run_http_server()
-    else:
-        if not telegram_available:
-            logger.warning("⚠️ Telegram модули недоступны")
-        if not BOT_TOKEN:
-            logger.warning("⚠️ BOT_TOKEN не найден")
-        logger.info("🌐 Запуск в режиме HTTP сервера")
-        run_http_server()
+    if not fastapi_available:
+        logger.error("❌ FastAPI недоступен! Установите: pip install fastapi uvicorn")
+        return
+    
+    try:
+        # Запуск FastAPI сервера с Telegram webhook
+        asyncio.run(run_server())
+    except Exception as e:
+        logger.error(f"💥 Критическая ошибка: {e}")
+        raise
 
 if __name__ == "__main__":
     try:
@@ -211,5 +265,4 @@ if __name__ == "__main__":
         logger.info("👋 Бот остановлен пользователем")
     except Exception as e:
         logger.error(f"💥 Критическая ошибка: {e}")
-        logger.info("🔄 Запуск аварийного HTTP сервера...")
-        run_http_server()
+        exit(1)
