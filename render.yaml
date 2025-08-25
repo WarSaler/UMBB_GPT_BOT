@@ -4,20 +4,12 @@ services:
     env: python
     plan: free
     buildCommand: |
-      echo "🔍 Начало сборки UMBB GPT Bot..."
-      python3 --version
-      pip3 --version
-      echo "📦 Установка зависимостей..."
-      pip3 install --upgrade pip
-      pip3 install -r requirements_minimal.txt
+      echo "🔧 Установка зависимостей:"
+      pip install -r requirements.txt
       echo "✅ Проверка установленных пакетов:"
-      pip3 list | grep -E "(telegram|loguru|dotenv)"
-      echo "🧪 Тестирование импорта telegram:"
-      python3 -c "import telegram; print('✅ telegram импортирован успешно'); print(f'Версия: {telegram.__version__}')"
-      echo "🧪 Тестирование импорта telegram.ext:"
-      python3 -c "from telegram.ext import Application; print('✅ telegram.ext импортирован успешно')"
-      echo "🧪 Тестирование финального бота:"
-      python3 -c "exec(open('bot.py').read().split('if __name__')[0]); print('✅ bot.py загружен без ошибок')"
+      pip list | grep -E "(loguru|python-dotenv)"
+      echo "🧪 Тестирование HTTP сервера:"
+      python3 -c "import bot; print('✅ HTTP сервер загружен без ошибок')"
       echo "🎉 Сборка завершена успешно!"
     startCommand: python3 bot.py
     envVars:

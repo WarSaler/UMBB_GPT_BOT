@@ -1,4 +1,3 @@
-# Minimal Telegram Bot Dependencies for Testing
-python-telegram-bot==21.0.1
+# Минимальные зависимости для HTTP сервера
 loguru==0.7.2
 python-dotenv==1.0.0
