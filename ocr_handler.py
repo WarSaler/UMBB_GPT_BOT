@@ -1,10 +1,7 @@
 import os
 import io
-import cv2
-import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 import pytesseract
-import easyocr
 from loguru import logger
 from typing import Optional, List, Tuple, Dict
 import re
@@ -16,13 +13,8 @@ class OCRHandler:
         if os.path.exists(tesseract_cmd):
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
         
-        # Инициализация EasyOCR
-        try:
-            self.easyocr_reader = easyocr.Reader(['en', 'ru', 'de', 'fr', 'es', 'it', 'pt', 'zh', 'ja', 'ko'])
-            logger.info("EasyOCR инициализирован успешно")
-        except Exception as e:
-            logger.warning(f"Не удалось инициализировать EasyOCR: {e}")
-            self.easyocr_reader = None
+        # Используем только Tesseract для OCR
+        logger.info("Используется Tesseract OCR")
         
         # Поддерживаемые форматы изображений
         self.supported_formats = ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'webp']
@@ -104,78 +96,7 @@ class OCRHandler:
             logger.error(f"Ошибка Tesseract OCR: {e}")
             return None
     
-    def extract_text_easyocr(self, image: Image.Image) -> Optional[str]:
-        """
-        Извлечение текста с помощью EasyOCR
-        
-        Args:
-            image: PIL изображение
-        
-        Returns:
-            Распознанный текст или None
-        """
-        if not self.easyocr_reader:
-            return None
-        
-        try:
-            # Конвертация PIL в numpy array
-            image_np = np.array(image)
-            
-            # Распознавание текста
-            results = self.easyocr_reader.readtext(image_np, detail=0)
-            
-            if results:
-                text = ' '.join(results)
-                logger.info(f"EasyOCR распознал текст длиной {len(text)} символов")
-                return text.strip()
-            else:
-                logger.warning("EasyOCR не смог распознать текст")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Ошибка EasyOCR: {e}")
-            return None
-    
-    def extract_text_opencv(self, image: Image.Image) -> Optional[str]:
-        """
-        Дополнительная обработка с OpenCV + Tesseract
-        
-        Args:
-            image: PIL изображение
-        
-        Returns:
-            Распознанный текст или None
-        """
-        try:
-            # Конвертация PIL в OpenCV формат
-            image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-            
-            # Конвертация в оттенки серого
-            gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
-            
-            # Применение адаптивной бинаризации
-            binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-            
-            # Морфологические операции для очистки изображения
-            kernel = np.ones((1, 1), np.uint8)
-            binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-            
-            # Конвертация обратно в PIL
-            processed_image = Image.fromarray(binary)
-            
-            # Распознавание с Tesseract
-            text = self.extract_text_tesseract(processed_image)
-            
-            if text:
-                logger.info("OpenCV + Tesseract успешно распознали текст")
-                return text
-            else:
-                return None
-                
-        except Exception as e:
-            logger.error(f"Ошибка OpenCV обработки: {e}")
-            return None
+
     
     def clean_text(self, text: str) -> str:
         """
@@ -239,28 +160,9 @@ class OCRHandler:
             # Предварительная обработка
             processed_image = self.preprocess_image(image)
             
-            # Попытка распознавания разными методами
-            methods = [
-                ('EasyOCR', self.extract_text_easyocr),
-                ('Tesseract', self.extract_text_tesseract),
-                ('OpenCV+Tesseract', self.extract_text_opencv)
-            ]
-            
-            best_text = None
-            best_method = None
-            max_length = 0
-            
-            for method_name, method_func in methods:
-                try:
-                    text = method_func(processed_image)
-                    if text and len(text) > max_length:
-                        best_text = text
-                        best_method = method_name
-                        max_length = len(text)
-                        logger.info(f"{method_name} дал лучший результат: {len(text)} символов")
-                except Exception as e:
-                    logger.warning(f"Метод {method_name} не сработал: {e}")
-                    continue
+            # Распознавание с помощью Tesseract
+            best_text = self.extract_text_tesseract(processed_image)
+            best_method = 'Tesseract'
             
             if best_text:
                 # Очистка текста
@@ -273,10 +175,10 @@ class OCRHandler:
                     'confidence': min(100, max(50, len(cleaned_text) * 2))  # Простая оценка уверенности
                 })
                 
-                logger.info(f"Текст успешно извлечен методом {best_method}")
+                logger.info(f"Tesseract успешно распознал текст: {len(cleaned_text)} символов")
             else:
-                result['error'] = "Не удалось распознать текст ни одним из методов"
-                logger.warning("Все методы OCR не смогли распознать текст")
+                result['error'] = 'Не удалось распознать текст на изображении'
+                logger.warning("Tesseract не смог распознать текст")
             
             return result
             

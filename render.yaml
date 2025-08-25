@@ -36,13 +36,13 @@ services:
       - key: OCR_LANGUAGES
         value: eng,rus,deu,fra,spa,ita,por,chi_sim,jpn,kor
       - key: OCR_ENGINE
-        value: easyocr
+        value: tesseract
       - key: DEFAULT_SOURCE_LANG
         value: auto
       - key: DEFAULT_TARGET_LANG
         value: en
       - key: TRANSLATION_SERVICE
-        value: google
+        value: openai
       - key: MAX_IMAGE_SIZE
         value: 10485760
       - key: SUPPORTED_IMAGE_FORMATS

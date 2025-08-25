@@ -1,5 +1,4 @@
 import os
-from googletrans import Translator, LANGUAGES
 from loguru import logger
 from typing import Optional, Dict, List, Tuple
 import asyncio
@@ -7,13 +6,12 @@ from openai_handler import get_openai_handler
 
 class TranslationHandler:
     def __init__(self):
-        self.google_translator = Translator()
         self.openai_handler = get_openai_handler()
         
         # Настройки по умолчанию
         self.default_source_lang = os.getenv('DEFAULT_SOURCE_LANG', 'auto')
         self.default_target_lang = os.getenv('DEFAULT_TARGET_LANG', 'en')
-        self.translation_service = os.getenv('TRANSLATION_SERVICE', 'google')
+        self.translation_service = os.getenv('TRANSLATION_SERVICE', 'openai')
         
         # Маппинг языков для удобства пользователей
         self.language_mapping = {
@@ -97,53 +95,9 @@ class TranslationHandler:
         if language_code in self.reverse_language_mapping:
             return self.reverse_language_mapping[language_code]
         
-        # Если есть в Google Translate
-        if language_code in LANGUAGES:
-            return LANGUAGES[language_code].capitalize()
-        
         return language_code.upper()
     
-    async def translate_with_google(self, text: str, target_lang: str = 'ru', source_lang: str = 'auto') -> Optional[Dict]:
-        """
-        Перевод с помощью Google Translate
-        
-        Args:
-            text: Текст для перевода
-            target_lang: Целевой язык
-            source_lang: Исходный язык
-        
-        Returns:
-            Словарь с результатами перевода
-        """
-        try:
-            # Конвертация названий языков в коды
-            target_code = self.get_language_code(target_lang)
-            source_code = self.get_language_code(source_lang) if source_lang != 'auto' else 'auto'
-            
-            # Выполнение перевода
-            result = self.google_translator.translate(text, dest=target_code, src=source_code)
-            
-            translation_result = {
-                'success': True,
-                'translated_text': result.text,
-                'source_language': self.get_language_name(result.src),
-                'target_language': self.get_language_name(target_code),
-                'source_language_code': result.src,
-                'target_language_code': target_code,
-                'service': 'Google Translate',
-                'confidence': getattr(result, 'confidence', None)
-            }
-            
-            logger.info(f"Google Translate: {result.src} -> {target_code}, длина: {len(result.text)}")
-            return translation_result
-            
-        except Exception as e:
-            logger.error(f"Ошибка Google Translate: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'service': 'Google Translate'
-            }
+
     
     async def translate_with_openai(self, text: str, target_lang: str = 'английский', source_lang: str = 'автоопределение') -> Optional[Dict]:
         """
@@ -226,20 +180,8 @@ class TranslationHandler:
         
         logger.info(f"Начинаю перевод текста (длина: {len(text)}) на {target_lang}")
         
-        # Попытка перевода с основным сервисом
-        if use_openai:
-            result = await self.translate_with_openai(text, target_lang, source_lang)
-        else:
-            result = await self.translate_with_google(text, target_lang, source_lang)
-        
-        # Если основной сервис не сработал, пробуем альтернативный
-        if not result.get('success'):
-            logger.warning(f"Основной сервис не сработал, пробую альтернативный")
-            
-            if use_openai:
-                result = await self.translate_with_google(text, target_lang, source_lang)
-            else:
-                result = await self.translate_with_openai(text, target_lang, source_lang)
+        # Перевод с помощью OpenAI
+        result = await self.translate_with_openai(text, target_lang, source_lang)
         
         return result
     
@@ -263,37 +205,23 @@ class TranslationHandler:
             Информация о языке
         """
         try:
-            # Сначала пробуем Google
-            detected = self.google_translator.detect(text)
-            
-            result = {
-                'success': True,
-                'language_code': detected.lang,
-                'language_name': self.get_language_name(detected.lang),
-                'confidence': detected.confidence,
-                'service': 'Google Translate'
-            }
-            
-            logger.info(f"Определен язык: {result['language_name']} ({result['language_code']})")
-            return result
-            
+            # Используем OpenAI для определения языка
+            language_name = await self.openai_handler.detect_language(text)
+            if language_name:
+                return {
+                    'success': True,
+                    'language_name': language_name,
+                    'language_code': self.get_language_code(language_name),
+                    'confidence': 0.8,
+                    'service': 'OpenAI GPT'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Не удалось определить язык текста'
+                }
         except Exception as e:
-            logger.warning(f"Google не смог определить язык: {e}")
-            
-            # Пробуем OpenAI
-            try:
-                language_name = await self.openai_handler.detect_language(text)
-                if language_name:
-                    return {
-                        'success': True,
-                        'language_name': language_name,
-                        'language_code': self.get_language_code(language_name),
-                        'confidence': 0.8,
-                        'service': 'OpenAI GPT'
-                    }
-            except Exception as e2:
-                logger.error(f"OpenAI тоже не смог определить язык: {e2}")
-            
+            logger.error(f"OpenAI не смог определить язык: {e}")
             return {
                 'success': False,
                 'error': 'Не удалось определить язык текста'

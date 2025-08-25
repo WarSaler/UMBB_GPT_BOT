@@ -1,32 +1,25 @@
 # Telegram Bot Dependencies
-pyTelegramBotAPI>=4.14.0
+pyTelegramBotAPI==4.14.0
 
-# OpenAI API
-openai>=1.12.0
+# OpenAI API - fixed version to avoid httpx conflicts
+openai==1.12.0
 
 # Image Processing and OCR
-Pillow>=10.3.0
-pytesseract>=0.3.10
-easyocr>=1.7.0
-opencv-python-headless>=4.9.0.80
+Pillow==10.3.0
+pytesseract==0.3.10
 
-# Translation
-googletrans==4.0.0rc1
+# Translation - using requests instead of googletrans to avoid conflicts
+requests==2.31.0
 
 # Web Server for Render
-Flask>=3.0.0
-requests>=2.31.0
+Flask==3.0.0
 
 # Environment Variables
 python-dotenv==1.0.0
 
-# Utilities
+# Logging
 loguru==0.7.2
-aiohttp==3.9.3
-aiofiles==23.2.0
 
-# Keep Alive
-# threading, time, and os are built-in Python modules
-
-# Additional utilities
-# json, base64, io, re are built-in Python modules
+# Note: Removed easyocr, opencv-python-headless, googletrans, aiohttp, aiofiles
+# to avoid dependency conflicts. Basic OCR with pytesseract + Pillow should work.
+# Built-in modules (threading, time, os, json, base64, io, re) are not needed here.

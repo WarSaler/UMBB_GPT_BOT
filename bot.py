@@ -12,8 +12,6 @@ from telegram.ext import (
 from telegram.constants import ParseMode
 from loguru import logger
 from PIL import Image
-import aiohttp
-import aiofiles
 
 # Импорт наших модулей
 from openai_handler import get_openai_handler
