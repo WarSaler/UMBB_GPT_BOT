@@ -55,55 +55,60 @@ WEBHOOK_URL = os.getenv('RENDER_EXTERNAL_URL', f'https://umbb-gpt-bot.onrender.c
 telegram_app: Optional[Application] = None
 
 # Создание FastAPI приложения
-app = FastAPI(title="Telegram Bot Webhook")
+if fastapi_available:
+    app = FastAPI(title="Telegram Bot Webhook")
+else:
+    app = None
 
-@app.get("/")
-async def root():
-    """Главная страница для проверки статуса"""
-    return HTMLResponse(content=f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Telegram Bot Status</title>
-        <meta charset="utf-8">
-    </head>
-    <body>
-        <h1>🤖 Telegram Bot Server</h1>
-        <p>Сервер работает на порту {PORT}</p>
-        <p>Статус Telegram: {'✅ Доступен' if telegram_available else '❌ Недоступен'}</p>
-        <p>Статус FastAPI: {'✅ Доступен' if fastapi_available else '❌ Недоступен'}</p>
-        <p>Токен: {'✅ Настроен' if BOT_TOKEN else '❌ Не найден'}</p>
-        <p>Webhook URL: {WEBHOOK_URL}</p>
-    </body>
-    </html>
-    """)
+# FastAPI endpoints (только если FastAPI доступен)
+if fastapi_available and app:
+    @app.get("/")
+    async def root():
+        """Главная страница для проверки статуса"""
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Telegram Bot Status</title>
+            <meta charset="utf-8">
+        </head>
+        <body>
+            <h1>🤖 Telegram Bot Server</h1>
+            <p>Сервер работает на порту {PORT}</p>
+            <p>Статус Telegram: {'✅ Доступен' if telegram_available else '❌ Недоступен'}</p>
+            <p>Статус FastAPI: {'✅ Доступен' if fastapi_available else '❌ Недоступен'}</p>
+            <p>Токен: {'✅ Настроен' if BOT_TOKEN else '❌ Не найден'}</p>
+            <p>Webhook URL: {WEBHOOK_URL}</p>
+        </body>
+        </html>
+        """)
 
-@app.get("/health")
-@app.get("/healthcheck")
-async def health_check():
-    """Health check endpoint для Render"""
-    return PlainTextResponse("OK - Bot is running")
+    @app.get("/health")
+    @app.get("/healthcheck")
+    async def health_check():
+        """Health check endpoint для Render"""
+        return PlainTextResponse("OK - Bot is running")
 
-@app.post("/webhook")
-async def webhook(request: Request):
-    """Обработка webhook запросов от Telegram"""
-    if not telegram_available or not telegram_app:
-        raise HTTPException(status_code=503, detail="Telegram bot not available")
-    
-    try:
-        # Получаем JSON данные от Telegram
-        json_data = await request.json()
+    @app.post("/webhook")
+    async def webhook(request: Request):
+        """Обработка webhook запросов от Telegram"""
+        if not telegram_available or not telegram_app:
+            raise HTTPException(status_code=503, detail="Telegram bot not available")
         
-        # Создаем Update объект
-        update = Update.de_json(json_data, telegram_app.bot)
-        
-        # Добавляем update в очередь для обработки
-        await telegram_app.update_queue.put(update)
-        
-        return {"status": "ok"}
-    except Exception as e:
-        logger.error(f"Ошибка обработки webhook: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        try:
+            # Получаем JSON данные от Telegram
+            json_data = await request.json()
+            
+            # Создаем Update объект
+            update = Update.de_json(json_data, telegram_app.bot)
+            
+            # Добавляем update в очередь для обработки
+            await telegram_app.update_queue.put(update)
+            
+            return {"status": "ok"}
+        except Exception as e:
+            logger.error(f"Ошибка обработки webhook: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 # Telegram Bot функции
 if telegram_available:
