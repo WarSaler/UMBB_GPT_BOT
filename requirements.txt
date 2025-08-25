@@ -1,25 +1,4 @@
-# Telegram Bot Dependencies
+# Minimal Telegram Bot Dependencies for Testing
 python-telegram-bot==21.0.1
-
-# OpenAI API - fixed version to avoid httpx conflicts
-openai==1.12.0
-
-# Image Processing and OCR
-Pillow==10.4.0
-pytesseract==0.3.10
-
-# Translation - using requests instead of googletrans to avoid conflicts
-requests==2.31.0
-
-# Web Server for Render
-Flask==3.0.0
-
-# Environment Variables
-python-dotenv==1.0.0
-
-# Logging
 loguru==0.7.2
-
-# Note: Removed easyocr, opencv-python-headless, googletrans, aiohttp, aiofiles
-# to avoid dependency conflicts. Basic OCR with pytesseract + Pillow should work.
-# Built-in modules (threading, time, os, json, base64, io, re) are not needed here.
+python-dotenv==1.0.0
