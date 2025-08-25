@@ -224,7 +224,7 @@ OCR_ENGINE=tesseract
 
 ```env
 # Язык по умолчанию для перевода
-DEFAULT_TARGET_LANG=ru
+DEFAULT_TARGET_LANG=en
 
 # Поддерживаемые языки OCR
 OCR_LANGUAGES=eng,rus,deu,fra,spa,ita,por,chi_sim,jpn,kor

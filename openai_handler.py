@@ -15,7 +15,7 @@ class OpenAIHandler:
         self.client = openai.OpenAI(api_key=self.api_key)
         logger.info(f"OpenAI клиент инициализирован с моделью: {self.model}")
     
-    async def translate_text(self, text: str, target_language: str = "русский", source_language: str = "автоопределение") -> Optional[str]:
+    async def translate_text(self, text: str, target_language: str = "английский", source_language: str = "автоопределение") -> Optional[str]:
         """
         Переводит текст с помощью OpenAI GPT
         

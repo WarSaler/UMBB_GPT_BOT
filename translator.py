@@ -12,7 +12,7 @@ class TranslationHandler:
         
         # Настройки по умолчанию
         self.default_source_lang = os.getenv('DEFAULT_SOURCE_LANG', 'auto')
-        self.default_target_lang = os.getenv('DEFAULT_TARGET_LANG', 'ru')
+        self.default_target_lang = os.getenv('DEFAULT_TARGET_LANG', 'en')
         self.translation_service = os.getenv('TRANSLATION_SERVICE', 'google')
         
         # Маппинг языков для удобства пользователей
@@ -145,7 +145,7 @@ class TranslationHandler:
                 'service': 'Google Translate'
             }
     
-    async def translate_with_openai(self, text: str, target_lang: str = 'русский', source_lang: str = 'автоопределение') -> Optional[Dict]:
+    async def translate_with_openai(self, text: str, target_lang: str = 'английский', source_lang: str = 'автоопределение') -> Optional[Dict]:
         """
         Перевод с помощью OpenAI GPT
         

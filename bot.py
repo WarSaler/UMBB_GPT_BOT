@@ -74,7 +74,7 @@ class TelegramBot:
         # Инициализация настроек пользователя
         if user_id not in self.user_settings:
             self.user_settings[user_id] = {
-                'target_language': 'русский',
+                'target_language': 'английский',
                 'use_openai': True,
                 'preserve_structure': True
             }
@@ -141,7 +141,7 @@ class TelegramBot:
         user_id = update.effective_user.id
         settings = self.user_settings.get(user_id, {})
         
-        current_lang = settings.get('target_language', 'русский')
+        current_lang = settings.get('target_language', 'английский')
         use_openai = settings.get('use_openai', True)
         preserve_structure = settings.get('preserve_structure', True)
         
@@ -398,7 +398,7 @@ class TelegramBot:
     
     async def _update_settings_message(self, query, settings):
         """Обновление сообщения с настройками"""
-        current_lang = settings.get('target_language', 'русский')
+        current_lang = settings.get('target_language', 'английский')
         use_openai = settings.get('use_openai', True)
         preserve_structure = settings.get('preserve_structure', True)
         
@@ -460,7 +460,7 @@ class TelegramBot:
             
             # Получение настроек пользователя
             settings = self.user_settings.get(user_id, {})
-            target_language = settings.get('target_language', 'русский')
+            target_language = settings.get('target_language', 'английский')
             use_openai = settings.get('use_openai', True)
             preserve_structure = settings.get('preserve_structure', True)
             

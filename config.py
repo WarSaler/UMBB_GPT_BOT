@@ -104,7 +104,7 @@ class Config:
     @property
     def default_target_language(self) -> str:
         """Целевой язык по умолчанию"""
-        return os.getenv('DEFAULT_TARGET_LANG', 'ru')
+        return os.getenv('DEFAULT_TARGET_LANG', 'en')
     
     # === TRANSLATION SETTINGS ===
     @property
