@@ -62,8 +62,6 @@ services:
         value: false
       - key: WEBHOOK_PATH
         value: /webhook
-      - key: GOOGLE_TRANSLATE_TIMEOUT
-        value: 10
     # Настройки автомасштабирования
     autoDeploy: true
     # Регион (выберите ближайший)
@@ -99,20 +97,11 @@ services:
       apt-get install -y tesseract-ocr-eng tesseract-ocr-rus tesseract-ocr-deu
       apt-get install -y tesseract-ocr-fra tesseract-ocr-spa tesseract-ocr-ita
       apt-get install -y tesseract-ocr-por tesseract-ocr-chi-sim tesseract-ocr-jpn
-      apt-get install -y tesseract-ocr-kor tesseract-ocr-ara tesseract-ocr-tur
-      # Установка библиотек для OpenCV
-      apt-get install -y libgl1-mesa-glx libglib2.0-0
-      apt-get install -y libsm6 libxext6 libxrender-dev
-      apt-get install -y libgomp1 libgthread-2.0-0
-      apt-get install -y libfontconfig1 libxss1
-      # Установка дополнительных зависимостей
-      apt-get install -y libjpeg-dev libpng-dev libtiff-dev
-      apt-get install -y libavcodec-dev libavformat-dev libswscale-dev
-      apt-get install -y libgtk2.0-dev libcanberra-gtk-module
+      apt-get install -y tesseract-ocr-kor
       # Очистка кэша
       apt-get clean
       rm -rf /var/lib/apt/lists/*
-      echo "System dependencies installed successfully"
+      echo "Tesseract OCR installed successfully"
     # Настройки для оптимизации производительности
     scaling:
       minInstances: 1
@@ -132,9 +121,8 @@ services:
       echo "Post-deploy setup..."
       # Проверка установленных пакетов
       tesseract --version
-      python -c "import cv2; print('OpenCV version:', cv2.__version__)"
-      python -c "import easyocr; print('EasyOCR imported successfully')"
       python -c "import openai; print('OpenAI library imported successfully')"
+      python -c "import pytesseract; print('PyTesseract imported successfully')"
       echo "All dependencies verified successfully"
     # Настройки логирования
     logging:
