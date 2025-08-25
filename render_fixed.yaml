@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: umbb-gpt-bot
+    name: umbb-gpt-bot-fixed
     env: python
     plan: free
     buildCommand: |
-      echo "🔍 Начало сборки UMBB GPT Bot..."
+      echo "🔍 Начало диагностики и установки..."
       python3 --version
       pip3 --version
       echo "📦 Установка зависимостей..."
@@ -16,10 +16,10 @@ services:
       python3 -c "import telegram; print('✅ telegram импортирован успешно'); print(f'Версия: {telegram.__version__}')"
       echo "🧪 Тестирование импорта telegram.ext:"
       python3 -c "from telegram.ext import Application; print('✅ telegram.ext импортирован успешно')"
-      echo "🧪 Тестирование финального бота:"
-      python3 -c "exec(open('bot_final.py').read().split('if __name__')[0]); print('✅ bot_final.py загружен без ошибок')"
+      echo "🧪 Тестирование исправленного бота:"
+      python3 -c "print('🧪 Тестирование bot_fixed.py...'); exec(open('bot_fixed.py').read().split('if __name__')[0]); print('✅ bot_fixed.py загружен без ошибок')"
       echo "🎉 Сборка завершена успешно!"
-    startCommand: python3 bot_final.py
+    startCommand: python3 bot_fixed.py
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
