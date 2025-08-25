@@ -1,33 +1,89 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Финальная рабочая версия Telegram Bot
+"""
+
 import os
 import asyncio
 import logging
 from io import BytesIO
 from typing import Optional, Dict, Any
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    filters, ContextTypes
-)
-from telegram.constants import ParseMode
-from loguru import logger
-from PIL import Image
+# Импорт telegram модулей с обработкой ошибок
+try:
+    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram.ext import (
+        Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+        filters, ContextTypes
+    )
+    from telegram.constants import ParseMode
+    print("✅ Успешный импорт telegram модулей")
+except ImportError as e:
+    print(f"❌ Ошибка импорта telegram: {e}")
+    raise
 
-# Импорт наших модулей
-from openai_handler import get_openai_handler
-from ocr_handler import get_ocr_handler
-from translator import get_translation_handler
+# Импорт логирования
+try:
+    from loguru import logger
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info = print
+    logger.error = print
+    logger.warning = print
+
+# Импорт наших минимальных обработчиков
+try:
+    from openai_handler_minimal import get_openai_handler
+except ImportError as e:
+    print(f"⚠️ Не удалось импортировать openai_handler_minimal: {e}")
+    def get_openai_handler():
+        return None
+
+try:
+    from ocr_handler_minimal import get_ocr_handler
+except ImportError as e:
+    print(f"⚠️ Не удалось импортировать ocr_handler_minimal: {e}")
+    def get_ocr_handler():
+        return None
+
+try:
+    from translator_minimal import get_translation_handler
+except ImportError as e:
+    print(f"⚠️ Не удалось импортировать translator_minimal: {e}")
+    def get_translation_handler():
+        return None
 
 class TelegramBot:
     def __init__(self):
         self.bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
         if not self.bot_token:
-            raise ValueError("TELEGRAM_BOT_TOKEN не найден в переменных окружения")
+            raise ValueError("❌ TELEGRAM_BOT_TOKEN не найден в переменных окружения")
         
-        # Инициализация обработчиков
-        self.openai_handler = get_openai_handler()
-        self.ocr_handler = get_ocr_handler()
-        self.translation_handler = get_translation_handler()
+        print(f"🔑 Bot token найден: {self.bot_token[:10]}...")
+        
+        # Инициализация обработчиков с проверкой
+        try:
+            self.openai_handler = get_openai_handler()
+            print(f"🤖 OpenAI handler: {'✅ Инициализирован' if self.openai_handler else '❌ Недоступен'}")
+        except Exception as e:
+            print(f"⚠️ Ошибка инициализации OpenAI handler: {e}")
+            self.openai_handler = None
+            
+        try:
+            self.ocr_handler = get_ocr_handler()
+            print(f"👁️ OCR handler: {'✅ Инициализирован' if self.ocr_handler else '❌ Недоступен'}")
+        except Exception as e:
+            print(f"⚠️ Ошибка инициализации OCR handler: {e}")
+            self.ocr_handler = None
+            
+        try:
+            self.translation_handler = get_translation_handler()
+            print(f"🌐 Translation handler: {'✅ Инициализирован' if self.translation_handler else '❌ Недоступен'}")
+        except Exception as e:
+            print(f"⚠️ Ошибка инициализации Translation handler: {e}")
+            self.translation_handler = None
         
         # Настройки
         self.max_image_size = int(os.getenv('MAX_IMAGE_SIZE', '10485760'))  # 10MB
@@ -37,567 +93,431 @@ class TelegramBot:
         self.user_settings = {}
         
         # Создание приложения
-        self.application = Application.builder().token(self.bot_token).build()
-        self._setup_handlers()
-        
-        logger.info("Telegram бот инициализирован")
+        try:
+            self.application = Application.builder().token(self.bot_token).build()
+            self._setup_handlers()
+            print("✅ Telegram бот инициализирован успешно")
+        except Exception as e:
+            print(f"❌ Ошибка создания приложения: {e}")
+            raise
     
     def _setup_handlers(self):
         """Настройка обработчиков команд и сообщений"""
-        # Команды
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("settings", self.settings_command))
-        self.application.add_handler(CommandHandler("languages", self.languages_command))
-        self.application.add_handler(CommandHandler("setlang", self.setlang_command))
-        
-        # Обработка изображений
-        self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_photo))
-        self.application.add_handler(MessageHandler(filters.Document.IMAGE, self.handle_document))
-        
-        # Обработка текстовых сообщений
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
-        
-        # Обработка callback кнопок
-        self.application.add_handler(CallbackQueryHandler(self.handle_callback))
-        
-        # Обработка ошибок
-        self.application.add_error_handler(self.error_handler)
+        try:
+            # Команды
+            self.application.add_handler(CommandHandler("start", self.start_command))
+            self.application.add_handler(CommandHandler("help", self.help_command))
+            self.application.add_handler(CommandHandler("settings", self.settings_command))
+            self.application.add_handler(CommandHandler("languages", self.languages_command))
+            self.application.add_handler(CommandHandler("setlang", self.setlang_command))
+            self.application.add_handler(CommandHandler("status", self.status_command))
+            
+            # Обработчики сообщений
+            self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_photo))
+            self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_document))
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
+            
+            # Обработчик callback запросов
+            self.application.add_handler(CallbackQueryHandler(self.handle_callback))
+            
+            # Обработчик ошибок
+            self.application.add_error_handler(self.error_handler)
+            
+            print("✅ Обработчики настроены успешно")
+        except Exception as e:
+            print(f"❌ Ошибка настройки обработчиков: {e}")
+            raise
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка команды /start"""
-        user_id = update.effective_user.id
-        user_name = update.effective_user.first_name or "Пользователь"
-        
-        # Инициализация настроек пользователя
-        if user_id not in self.user_settings:
-            self.user_settings[user_id] = {
-                'target_language': 'английский',
-                'use_openai': True,
-                'preserve_structure': True
-            }
-        
-        welcome_text = f"""🤖 **Добро пожаловать, {user_name}!**
-
-Я бот для распознавания и перевода текста с изображений. Вот что я умею:
-
-📸 **Отправьте мне изображение** с текстом (чек, документ, фото)
-📝 **Отправьте текст** для перевода
-🌍 **Переведу на любой язык** с сохранением структуры
-
-**Команды:**
-/help - Помощь и инструкции
-/settings - Настройки бота
-/languages - Список доступных языков
-/setlang [язык] - Установить язык перевода
-
-**Поддерживаемые форматы изображений:**
-{', '.join(self.supported_formats).upper()}
-
-**Максимальный размер файла:** {self.max_image_size // 1024 // 1024} МБ
-
-Просто отправьте изображение или текст, и я начну работу! 🚀"""
-        
-        await update.message.reply_text(welcome_text, parse_mode=ParseMode.MARKDOWN)
-        logger.info(f"Пользователь {user_id} ({user_name}) запустил бота")
+        """Обработчик команды /start"""
+        try:
+            user_id = update.effective_user.id
+            user_name = update.effective_user.first_name or "Пользователь"
+            
+            # Инициализация настроек пользователя
+            if user_id not in self.user_settings:
+                self.user_settings[user_id] = {
+                    'source_language': 'auto',
+                    'target_language': 'en',
+                    'ocr_language': 'rus+eng',
+                    'use_openai_translation': True,
+                    'improve_ocr': True
+                }
+            
+            welcome_text = (
+                f"🤖 Привет, {user_name}! Добро пожаловать в UMBB GPT Bot!\n\n"
+                "Я могу помочь вам с:\n"
+                "📸 Распознаванием текста с изображений (OCR)\n"
+                "🌐 Переводом текста\n"
+                "🤖 Улучшением качества распознанного текста\n\n"
+                "📋 Доступные команды:\n"
+                "/help - Справка\n"
+                "/status - Статус сервисов\n"
+                "/languages - Список языков\n\n"
+                "📤 Просто отправьте мне:\n"
+                "• Изображение с текстом для распознавания\n"
+                "• Текст для перевода\n\n"
+                "🚀 Давайте начнем!"
+            )
+            
+            await update.message.reply_text(welcome_text)
+            print(f"👤 Новый пользователь: {user_name} (ID: {user_id})")
+            
+        except Exception as e:
+            print(f"❌ Ошибка в start_command: {e}")
+            await update.message.reply_text("❌ Произошла ошибка при обработке команды.")
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка команды /help"""
-        help_text = """📖 **Инструкция по использованию**
-
-**1. Распознавание текста с изображений:**
-• Отправьте фото или документ с текстом
-• Бот автоматически распознает и переведет текст
-• Структура оригинала будет сохранена
-
-**2. Перевод текста:**
-• Просто отправьте текстовое сообщение
-• Бот переведет его на выбранный язык
-
-**3. Настройки:**
-• `/settings` - открыть панель настроек
-• `/setlang русский` - установить русский как целевой язык
-• `/languages` - посмотреть все доступные языки
-
-**4. Поддерживаемые языки:**
-Русский, Английский, Немецкий, Французский, Испанский, Итальянский, Португальский, Китайский, Японский, Корейский, Арабский, Турецкий и многие другие.
-
-**5. Советы:**
-• Для лучшего качества используйте четкие изображения
-• Избегайте слишком мелкого текста
-• Проверьте освещение на фото
-
-**Возникли проблемы?** Попробуйте:
-• Переснять изображение с лучшим качеством
-• Использовать другой формат файла
-• Проверить размер файла (макс. {self.max_image_size // 1024 // 1024} МБ)"""
+        """Обработчик команды /help"""
+        help_text = (
+            "📋 **Доступные команды:**\n\n"
+            "/start - Начать работу с ботом\n"
+            "/help - Показать это сообщение\n"
+            "/status - Проверить статус сервисов\n"
+            "/languages - Список доступных языков\n"
+            "/setlang <код> - Установить язык перевода\n\n"
+            "📸 **Как использовать:**\n"
+            "• Отправьте изображение с текстом для распознавания\n"
+            "• Отправьте текст для перевода\n"
+            "• Используйте команды для настройки\n\n"
+            "🔧 **Поддерживаемые форматы изображений:**\n"
+            "JPG, PNG, BMP, TIFF, WebP\n\n"
+            "💡 **Совет:** Для лучшего качества OCR используйте четкие изображения с хорошим освещением."
+        )
         
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
     
-    async def settings_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка команды /settings"""
-        user_id = update.effective_user.id
-        settings = self.user_settings.get(user_id, {})
+    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /status"""
+        status_text = (
+            "🔍 **Статус сервисов:**\n\n"
+            f"🤖 OpenAI Handler: {'✅ Работает' if self.openai_handler else '❌ Недоступен'}\n"
+            f"👁️ OCR Handler: {'✅ Работает' if self.ocr_handler else '❌ Недоступен'}\n"
+            f"🌐 Translation Handler: {'✅ Работает' if self.translation_handler else '❌ Недоступен'}\n\n"
+            f"📊 **Статистика:**\n"
+            f"👥 Активных пользователей: {len(self.user_settings)}\n"
+            f"💾 Максимальный размер изображения: {self.max_image_size // 1024 // 1024} MB\n"
+            f"🖼️ Поддерживаемые форматы: {', '.join(self.supported_formats)}\n\n"
+            "🚀 Бот работает нормально!"
+        )
         
-        current_lang = settings.get('target_language', 'английский')
-        use_openai = settings.get('use_openai', True)
-        preserve_structure = settings.get('preserve_structure', True)
-        
-        # Создание клавиатуры настроек
-        keyboard = [
-            [InlineKeyboardButton(f"🌍 Язык: {current_lang}", callback_data="change_language")],
-            [InlineKeyboardButton(f"🤖 AI: {'OpenAI' if use_openai else 'Google'}", callback_data="toggle_ai")],
-            [InlineKeyboardButton(f"📋 Структура: {'Сохранять' if preserve_structure else 'Не сохранять'}", callback_data="toggle_structure")],
-            [InlineKeyboardButton("🔄 Сбросить настройки", callback_data="reset_settings")]
-        ]
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        settings_text = f"""⚙️ **Настройки бота**
-
-**Текущие настройки:**
-🌍 Целевой язык: **{current_lang}**
-🤖 ИИ для перевода: **{'OpenAI GPT' if use_openai else 'Google Translate'}**
-📋 Сохранение структуры: **{'Включено' if preserve_structure else 'Выключено'}**
-
-Используйте кнопки ниже для изменения настроек:"""
-        
-        await update.message.reply_text(settings_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(status_text, parse_mode=ParseMode.MARKDOWN)
     
     async def languages_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка команды /languages"""
-        languages = await self.translation_handler.get_available_languages()
+        """Обработчик команды /languages"""
+        languages_text = (
+            "🌐 **Поддерживаемые языки:**\n\n"
+            "🇷🇺 `ru` - Русский\n"
+            "🇺🇸 `en` - English\n"
+            "🇩🇪 `de` - Deutsch\n"
+            "🇫🇷 `fr` - Français\n"
+            "🇪🇸 `es` - Español\n"
+            "🇮🇹 `it` - Italiano\n"
+            "🇵🇹 `pt` - Português\n"
+            "🇨🇳 `zh` - 中文\n"
+            "🇯🇵 `ja` - 日本語\n"
+            "🇰🇷 `ko` - 한국어\n\n"
+            "💡 Используйте `/setlang <код>` для установки языка перевода\n"
+            "Например: `/setlang en` для английского"
+        )
         
-        # Группировка языков для удобного отображения
-        lang_list = []
-        for lang_name, lang_code in sorted(languages.items()):
-            lang_list.append(f"• **{lang_name.capitalize()}** (`{lang_code}`)") 
-        
-        # Разбиваем на части, чтобы не превысить лимит сообщения
-        chunk_size = 30
-        chunks = [lang_list[i:i + chunk_size] for i in range(0, len(lang_list), chunk_size)]
-        
-        for i, chunk in enumerate(chunks):
-            header = "🌍 **Доступные языки для перевода:**\n\n" if i == 0 else ""
-            text = header + "\n".join(chunk)
-            
-            if i == len(chunks) - 1:
-                text += "\n\n**Использование:** `/setlang русский` или `/setlang ru`"
-            
-            await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(languages_text, parse_mode=ParseMode.MARKDOWN)
     
     async def setlang_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка команды /setlang"""
+        """Обработчик команды /setlang"""
         user_id = update.effective_user.id
         
         if not context.args:
             await update.message.reply_text(
-                "❌ Укажите язык!\n\nПример: `/setlang русский` или `/setlang ru`\n\nДля просмотра всех языков: /languages",
+                "❌ Укажите код языка.\n"
+                "Пример: `/setlang en`\n"
+                "Используйте /languages для списка доступных языков.",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
         
-        target_language = " ".join(context.args).lower()
+        language_code = context.args[0].lower()
+        supported_languages = {
+            'ru': 'Русский', 'en': 'English', 'de': 'Deutsch',
+            'fr': 'Français', 'es': 'Español', 'it': 'Italiano',
+            'pt': 'Português', 'zh': '中文', 'ja': '日本語', 'ko': '한국어'
+        }
         
-        # Проверка существования языка
-        languages = await self.translation_handler.get_available_languages()
-        lang_code = self.translation_handler.get_language_code(target_language)
-        
-        if lang_code not in languages.values() and target_language not in languages:
+        if language_code not in supported_languages:
             await update.message.reply_text(
-                f"❌ Язык '{target_language}' не найден!\n\nИспользуйте /languages для просмотра доступных языков.",
+                f"❌ Язык `{language_code}` не поддерживается.\n"
+                "Используйте /languages для списка доступных языков.",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
         
-        # Сохранение настройки
+        # Обновляем настройки пользователя
         if user_id not in self.user_settings:
             self.user_settings[user_id] = {}
         
-        self.user_settings[user_id]['target_language'] = target_language
+        self.user_settings[user_id]['target_language'] = language_code
         
-        lang_name = self.translation_handler.get_language_name(lang_code)
         await update.message.reply_text(
-            f"✅ Язык перевода установлен: **{lang_name}** (`{lang_code}`)\n\nТеперь все переводы будут выполняться на этот язык.",
+            f"✅ Язык перевода установлен: **{supported_languages[language_code]}** (`{language_code}`)",
             parse_mode=ParseMode.MARKDOWN
         )
+    
+    async def settings_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /settings"""
+        user_id = update.effective_user.id
+        settings = self.user_settings.get(user_id, {})
         
-        logger.info(f"Пользователь {user_id} установил язык: {target_language}")
+        settings_text = (
+            "⚙️ **Ваши настройки:**\n\n"
+            f"🌐 Язык перевода: `{settings.get('target_language', 'en')}`\n"
+            f"🔍 Язык OCR: `{settings.get('ocr_language', 'rus+eng')}`\n"
+            f"🤖 OpenAI перевод: {'✅ Включен' if settings.get('use_openai_translation', True) else '❌ Выключен'}\n"
+            f"📝 Улучшение OCR: {'✅ Включено' if settings.get('improve_ocr', True) else '❌ Выключено'}\n\n"
+            "💡 Используйте команды для изменения настроек:\n"
+            "• `/setlang <код>` - изменить язык перевода\n"
+            "• `/languages` - список доступных языков"
+        )
+        
+        await update.message.reply_text(settings_text, parse_mode=ParseMode.MARKDOWN)
     
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка фотографий"""
-        user_id = update.effective_user.id
-        
-        # Отправка сообщения о начале обработки
-        processing_msg = await update.message.reply_text("🔄 Обрабатываю изображение...")
-        
+        """Обработчик фотографий"""
         try:
-            # Получение файла
-            photo = update.message.photo[-1]  # Берем самое большое разрешение
+            user_id = update.effective_user.id
+            user_settings = self.user_settings.get(user_id, {})
+            
+            # Отправляем сообщение о начале обработки
+            processing_message = await update.message.reply_text("📸 Обрабатываю изображение...")
+            
+            if not self.ocr_handler:
+                await processing_message.edit_text("❌ OCR сервис временно недоступен")
+                return
+            
+            # Получаем файл изображения
+            photo = update.message.photo[-1]  # Берем изображение наибольшего размера
             file = await context.bot.get_file(photo.file_id)
             
-            # Проверка размера
+            # Проверяем размер файла
             if file.file_size > self.max_image_size:
-                await processing_msg.edit_text(
-                    f"❌ Файл слишком большой! Максимальный размер: {self.max_image_size // 1024 // 1024} МБ"
+                await processing_message.edit_text(
+                    f"❌ Изображение слишком большое ({file.file_size // 1024 // 1024} MB). "
+                    f"Максимальный размер: {self.max_image_size // 1024 // 1024} MB"
                 )
                 return
             
-            # Скачивание изображения
-            image_bytes = await self._download_file(file.file_path)
-            if not image_bytes:
-                await processing_msg.edit_text("❌ Не удалось скачать изображение")
+            # Скачиваем изображение
+            image_data = BytesIO()
+            await file.download_to_memory(image_data)
+            image_bytes = image_data.getvalue()
+            
+            await processing_message.edit_text("🔍 Распознаю текст...")
+            
+            # Извлекаем текст
+            ocr_language = user_settings.get('ocr_language', 'rus+eng')
+            extracted_text = await self.ocr_handler.extract_text_from_image(image_bytes, ocr_language)
+            
+            if not extracted_text or extracted_text.strip() == "":
+                await processing_message.edit_text("❌ Не удалось распознать текст на изображении")
                 return
             
-            # Обработка изображения
-            await self._process_image(update, context, image_bytes, processing_msg, user_id)
+            # Улучшаем текст, если включено
+            final_text = extracted_text
+            if user_settings.get('improve_ocr', True) and self.translation_handler:
+                await processing_message.edit_text("✨ Улучшаю качество текста...")
+                improvement_result = await self.translation_handler.improve_text(extracted_text)
+                if improvement_result.get('success'):
+                    final_text = improvement_result.get('improved_text', extracted_text)
+            
+            # Переводим, если нужно
+            target_language = user_settings.get('target_language', 'en')
+            if target_language != 'auto' and self.translation_handler:
+                await processing_message.edit_text("🌐 Перевожу текст...")
+                translation_result = await self.translation_handler.translate_text(
+                    final_text, target_language, 'auto'
+                )
+                if translation_result.get('success'):
+                    translated_text = translation_result.get('translated_text', final_text)
+                    source_lang = translation_result.get('source_language', 'unknown')
+                    
+                    result_text = (
+                        f"📸 **Результат OCR:**\n\n"
+                        f"🔤 **Распознанный текст** ({source_lang}):\n{final_text}\n\n"
+                        f"🌐 **Перевод** ({target_language}):\n{translated_text}"
+                    )
+                else:
+                    result_text = f"📸 **Распознанный текст:**\n\n{final_text}"
+            else:
+                result_text = f"📸 **Распознанный текст:**\n\n{final_text}"
+            
+            await processing_message.edit_text(result_text, parse_mode=ParseMode.MARKDOWN)
+            print(f"📸 OCR обработка завершена для пользователя {user_id}")
             
         except Exception as e:
-            logger.error(f"Ошибка обработки фото: {e}")
-            await processing_msg.edit_text(f"❌ Ошибка обработки изображения: {str(e)}")
+            print(f"❌ Ошибка в handle_photo: {e}")
+            try:
+                await processing_message.edit_text("❌ Произошла ошибка при обработке изображения")
+            except:
+                await update.message.reply_text("❌ Произошла ошибка при обработке изображения")
     
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка документов (изображений)"""
-        user_id = update.effective_user.id
+        """Обработчик документов"""
         document = update.message.document
         
-        # Проверка типа файла
-        if not any(document.file_name.lower().endswith(f'.{fmt}') for fmt in self.supported_formats):
+        if not self.ocr_handler or not self.ocr_handler.is_supported_format(document.file_name):
             await update.message.reply_text(
-                f"❌ Неподдерживаемый формат файла!\n\nПоддерживаемые форматы: {', '.join(self.supported_formats).upper()}"
+                f"❌ Формат файла `{document.file_name}` не поддерживается.\n"
+                f"Поддерживаемые форматы: {', '.join(self.supported_formats)}",
+                parse_mode=ParseMode.MARKDOWN
             )
             return
         
-        # Проверка размера
-        if document.file_size > self.max_image_size:
-            await update.message.reply_text(
-                f"❌ Файл слишком большой! Максимальный размер: {self.max_image_size // 1024 // 1024} МБ"
-            )
-            return
-        
-        processing_msg = await update.message.reply_text("🔄 Обрабатываю документ...")
-        
-        try:
-            # Получение файла
-            file = await context.bot.get_file(document.file_id)
-            
-            # Скачивание
-            image_bytes = await self._download_file(file.file_path)
-            if not image_bytes:
-                await processing_msg.edit_text("❌ Не удалось скачать файл")
-                return
-            
-            # Обработка
-            await self._process_image(update, context, image_bytes, processing_msg, user_id)
-            
-        except Exception as e:
-            logger.error(f"Ошибка обработки документа: {e}")
-            await processing_msg.edit_text(f"❌ Ошибка обработки документа: {str(e)}")
+        # Обрабатываем как изображение
+        await self.handle_photo(update, context)
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка текстовых сообщений"""
-        user_id = update.effective_user.id
-        text = update.message.text
-        
-        if not text or not text.strip():
-            await update.message.reply_text("❌ Пустое сообщение")
-            return
-        
-        # Получение настроек пользователя
-        settings = self.user_settings.get(user_id, {})
-        target_language = settings.get('target_language', 'русский')
-        use_openai = settings.get('use_openai', True)
-        
-        processing_msg = await update.message.reply_text("🔄 Перевожу текст...")
-        
+        """Обработчик текстовых сообщений"""
         try:
-            # Перевод текста
-            result = await self.translation_handler.translate_text(
-                text=text,
-                target_lang=target_language,
-                use_openai=use_openai
-            )
+            user_id = update.effective_user.id
+            user_settings = self.user_settings.get(user_id, {})
+            text = update.message.text
             
-            if result.get('success'):
-                formatted_result = self.translation_handler.format_translation_result(result)
-                await processing_msg.edit_text(formatted_result, parse_mode=ParseMode.MARKDOWN)
-                
-                logger.info(f"Пользователь {user_id} перевел текст (длина: {len(text)})")
-            else:
-                await processing_msg.edit_text(f"❌ Ошибка перевода: {result.get('error', 'Неизвестная ошибка')}")
-                
-        except Exception as e:
-            logger.error(f"Ошибка перевода текста: {e}")
-            await processing_msg.edit_text(f"❌ Ошибка перевода: {str(e)}")
-    
-    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка нажатий на inline кнопки"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        data = query.data
-        
-        await query.answer()
-        
-        if user_id not in self.user_settings:
-            self.user_settings[user_id] = {}
-        
-        settings = self.user_settings[user_id]
-        
-        if data == "change_language":
-            # Показать популярные языки
-            keyboard = [
-                [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_русский"),
-                 InlineKeyboardButton("🇺🇸 English", callback_data="lang_английский")],
-                [InlineKeyboardButton("🇩🇪 Deutsch", callback_data="lang_немецкий"),
-                 InlineKeyboardButton("🇫🇷 Français", callback_data="lang_французский")],
-                [InlineKeyboardButton("🇪🇸 Español", callback_data="lang_испанский"),
-                 InlineKeyboardButton("🇮🇹 Italiano", callback_data="lang_итальянский")],
-                [InlineKeyboardButton("🇨🇳 中文", callback_data="lang_китайский"),
-                 InlineKeyboardButton("🇯🇵 日本語", callback_data="lang_японский")],
-                [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_settings")]
-            ]
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text(
-                "🌍 **Выберите язык для перевода:**\n\nДля просмотра всех языков используйте /languages",
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN
-            )
-        
-        elif data.startswith("lang_"):
-            language = data[5:]
-            settings['target_language'] = language
-            
-            await query.edit_message_text(
-                f"✅ Язык перевода изменен на: **{language.capitalize()}**\n\nИспользуйте /settings для других настроек.",
-                parse_mode=ParseMode.MARKDOWN
-            )
-        
-        elif data == "toggle_ai":
-            settings['use_openai'] = not settings.get('use_openai', True)
-            await self._update_settings_message(query, settings)
-        
-        elif data == "toggle_structure":
-            settings['preserve_structure'] = not settings.get('preserve_structure', True)
-            await self._update_settings_message(query, settings)
-        
-        elif data == "reset_settings":
-            self.user_settings[user_id] = {
-                'target_language': 'русский',
-                'use_openai': True,
-                'preserve_structure': True
-            }
-            await query.edit_message_text(
-                "✅ Настройки сброшены к значениям по умолчанию!\n\nИспользуйте /settings для изменения настроек."
-            )
-        
-        elif data == "back_to_settings":
-            await self._update_settings_message(query, settings)
-    
-    async def _update_settings_message(self, query, settings):
-        """Обновление сообщения с настройками"""
-        current_lang = settings.get('target_language', 'английский')
-        use_openai = settings.get('use_openai', True)
-        preserve_structure = settings.get('preserve_structure', True)
-        
-        keyboard = [
-            [InlineKeyboardButton(f"🌍 Язык: {current_lang}", callback_data="change_language")],
-            [InlineKeyboardButton(f"🤖 AI: {'OpenAI' if use_openai else 'Google'}", callback_data="toggle_ai")],
-            [InlineKeyboardButton(f"📋 Структура: {'Сохранять' if preserve_structure else 'Не сохранять'}", callback_data="toggle_structure")],
-            [InlineKeyboardButton("🔄 Сбросить настройки", callback_data="reset_settings")]
-        ]
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        settings_text = f"""⚙️ **Настройки бота**
-
-**Текущие настройки:**
-🌍 Целевой язык: **{current_lang}**
-🤖 ИИ для перевода: **{'OpenAI GPT' if use_openai else 'Google Translate'}**
-📋 Сохранение структуры: **{'Включено' if preserve_structure else 'Выключено'}**
-
-Используйте кнопки ниже для изменения настроек:"""
-        
-        await query.edit_message_text(settings_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
-    
-    async def _download_file(self, file_path: str) -> Optional[bytes]:
-        """Скачивание файла из Telegram"""
-        try:
-            url = f"https://api.telegram.org/file/bot{self.bot_token}/{file_path}"
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        return await response.read()
-                    else:
-                        logger.error(f"Ошибка скачивания файла: {response.status}")
-                        return None
-        except Exception as e:
-            logger.error(f"Ошибка скачивания файла: {e}")
-            return None
-    
-    async def _process_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
-                           image_bytes: bytes, processing_msg, user_id: int):
-        """Обработка изображения: OCR + перевод"""
-        try:
-            # Обновление статуса
-            await processing_msg.edit_text("🔍 Распознаю текст на изображении...")
-            
-            # OCR
-            ocr_result = await self.ocr_handler.extract_text_from_image(image_bytes)
-            
-            if not ocr_result.get('success'):
-                await processing_msg.edit_text(f"❌ Ошибка распознавания: {ocr_result.get('error', 'Неизвестная ошибка')}")
+            if len(text) > 4000:
+                await update.message.reply_text("❌ Текст слишком длинный (максимум 4000 символов)")
                 return
             
-            extracted_text = ocr_result.get('text', '').strip()
+            processing_message = await update.message.reply_text("🌐 Обрабатываю текст...")
             
-            if not extracted_text:
-                await processing_msg.edit_text("❌ Текст на изображении не найден")
+            if not self.translation_handler:
+                await processing_message.edit_text("❌ Сервис перевода временно недоступен")
                 return
             
-            # Получение настроек пользователя
-            settings = self.user_settings.get(user_id, {})
-            target_language = settings.get('target_language', 'английский')
-            use_openai = settings.get('use_openai', True)
-            preserve_structure = settings.get('preserve_structure', True)
+            target_language = user_settings.get('target_language', 'en')
             
-            # Обновление статуса
-            await processing_msg.edit_text(f"📝 Найден текст! Перевожу на {target_language}...")
-            
-            # Улучшение текста с помощью OpenAI (если включено)
-            if use_openai and preserve_structure:
-                try:
-                    improved_text = await self.openai_handler.improve_ocr_text(extracted_text)
-                    if improved_text:
-                        extracted_text = improved_text
-                        logger.info("Текст улучшен с помощью OpenAI")
-                except Exception as e:
-                    logger.warning(f"Не удалось улучшить текст: {e}")
-            
-            # Перевод
+            # Переводим текст
             translation_result = await self.translation_handler.translate_text(
-                text=extracted_text,
-                target_lang=target_language,
-                use_openai=use_openai
+                text, target_language, 'auto'
             )
             
             if translation_result.get('success'):
-                # Форматирование результата
-                response_text = "📸 **Результат обработки изображения:**\n\n"
+                original = translation_result.get('original_text')
+                translated = translation_result.get('translated_text')
+                source_lang = translation_result.get('source_language', 'unknown')
+                target_lang = translation_result.get('target_language')
+                method = translation_result.get('method', 'unknown')
                 
-                # Добавляем информацию о распознанном тексте
-                response_text += f"**🔍 Распознанный текст:**\n{extracted_text[:500]}{'...' if len(extracted_text) > 500 else ''}\n\n"
-                
-                # Добавляем перевод
-                translated_text = translation_result['translated_text']
-                source_lang = translation_result.get('source_language', 'неизвестный')
-                target_lang = translation_result.get('target_language', target_language)
-                service = translation_result.get('service', 'неизвестный сервис')
-                
-                response_text += f"**🔄 Перевод ({source_lang} → {target_lang}):**\n{translated_text}\n\n"
-                response_text += f"_Переведено с помощью {service}_"
-                
-                # Отправка результата
-                if len(response_text) > 4096:  # Лимит Telegram
-                    # Разбиваем на части
-                    parts = [response_text[i:i+4000] for i in range(0, len(response_text), 4000)]
-                    
-                    await processing_msg.edit_text(parts[0], parse_mode=ParseMode.MARKDOWN)
-                    
-                    for part in parts[1:]:
-                        await update.message.reply_text(part, parse_mode=ParseMode.MARKDOWN)
+                if source_lang == target_lang:
+                    result_text = f"ℹ️ Текст уже на языке `{target_lang}`.\n\n**Текст:**\n{original}"
                 else:
-                    await processing_msg.edit_text(response_text, parse_mode=ParseMode.MARKDOWN)
-                
-                logger.info(f"Пользователь {user_id} успешно обработал изображение")
-                
+                    result_text = (
+                        f"🌐 **Перевод** ({source_lang} → {target_lang})\n"
+                        f"🔧 Метод: {method}\n\n"
+                        f"📝 **Оригинал:**\n{original}\n\n"
+                        f"🌍 **Перевод:**\n{translated}"
+                    )
             else:
-                error_msg = f"❌ Ошибка перевода: {translation_result.get('error', 'Неизвестная ошибка')}\n\n"
-                error_msg += f"**Распознанный текст:**\n{extracted_text}"
-                
-                await processing_msg.edit_text(error_msg, parse_mode=ParseMode.MARKDOWN)
-                
+                error = translation_result.get('error', 'Неизвестная ошибка')
+                result_text = f"❌ Ошибка перевода: {error}\n\n**Исходный текст:**\n{text}"
+            
+            await processing_message.edit_text(result_text, parse_mode=ParseMode.MARKDOWN)
+            print(f"🌐 Перевод завершен для пользователя {user_id}")
+            
         except Exception as e:
-            logger.error(f"Ошибка обработки изображения: {e}")
-            await processing_msg.edit_text(f"❌ Ошибка обработки: {str(e)}")
+            print(f"❌ Ошибка в handle_text: {e}")
+            try:
+                await processing_message.edit_text("❌ Произошла ошибка при обработке текста")
+            except:
+                await update.message.reply_text("❌ Произошла ошибка при обработке текста")
+    
+    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик callback запросов"""
+        query = update.callback_query
+        await query.answer("🔧 Функция в разработке")
     
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка ошибок"""
-        logger.error(f"Ошибка в боте: {context.error}")
+        """Обработчик ошибок"""
+        logger.error(f"Exception while handling an update: {context.error}")
+        print(f"❌ Ошибка: {context.error}")
         
-        if isinstance(update, Update) and update.effective_message:
+        if update and hasattr(update, 'effective_message'):
             try:
                 await update.effective_message.reply_text(
-                    "❌ Произошла ошибка при обработке запроса. Попробуйте еще раз."
+                    "❌ Произошла внутренняя ошибка. Попробуйте позже."
                 )
-            except Exception as e:
-                logger.error(f"Не удалось отправить сообщение об ошибке: {e}")
+            except Exception:
+                pass
     
     async def start_polling(self):
         """Запуск бота в режиме polling"""
-        logger.info("Запуск бота в режиме polling...")
-        await self.application.initialize()
-        await self.application.start()
-        await self.application.updater.start_polling()
-        
-        logger.info("Бот запущен и готов к работе!")
-        
-        # Ожидание завершения
         try:
+            print("🚀 Запуск бота в режиме polling...")
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.updater.start_polling()
+            
+            print("✅ Бот успешно запущен и ожидает сообщения!")
+            print("📱 Найдите бота в Telegram и отправьте /start")
+            
+            # Ожидание остановки
             await self.application.updater.idle()
-        except KeyboardInterrupt:
-            logger.info("Получен сигнал завершения")
+            
+        except Exception as e:
+            print(f"❌ Ошибка при запуске polling: {e}")
+            raise
         finally:
             await self.application.stop()
-            logger.info("Бот остановлен")
     
     async def start_webhook(self, webhook_url: str, port: int = 10000):
-        """Запуск бота в режиме webhook для Render"""
-        logger.info(f"Настройка webhook: {webhook_url}")
-        
-        await self.application.initialize()
-        await self.application.start()
-        
-        # Установка webhook
-        await self.application.bot.set_webhook(url=webhook_url)
-        
-        # Запуск webhook сервера
-        await self.application.updater.start_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path="webhook",
-            webhook_url=webhook_url
-        )
-        
-        logger.info(f"Webhook сервер запущен на порту {port}")
-        
-        # Ожидание
+        """Запуск бота в режиме webhook"""
         try:
+            print(f"🚀 Запуск бота в режиме webhook на порту {port}...")
+            print(f"🌐 Webhook URL: {webhook_url}")
+            
+            await self.application.initialize()
+            await self.application.start()
+            
+            # Настройка webhook
+            await self.application.updater.start_webhook(
+                listen="0.0.0.0",
+                port=port,
+                webhook_url=webhook_url
+            )
+            
+            print(f"✅ Webhook настроен успешно!")
+            print(f"📱 Бот готов к работе через webhook")
+            
+            # Ожидание остановки
             await self.application.updater.idle()
-        except KeyboardInterrupt:
-            logger.info("Получен сигнал завершения")
+            
+        except Exception as e:
+            print(f"❌ Ошибка при запуске webhook: {e}")
+            raise
         finally:
             await self.application.stop()
-            logger.info("Webhook сервер остановлен")
 
-# Функция для создания и запуска бота
 async def main():
     """Главная функция"""
     try:
+        print("🤖 UMBB GPT Bot - Финальная версия")
+        print("=" * 50)
+        print("🔍 Инициализация...")
+        
         bot = TelegramBot()
         
-        # Проверяем, нужен ли webhook режим
+        # Определяем режим запуска
         webhook_url = os.getenv('WEBHOOK_URL')
-        port = int(os.getenv('PORT', '10000'))
+        port = int(os.getenv('PORT', 10000))
         
         if webhook_url:
+            print(f"🌐 Режим: Webhook")
             await bot.start_webhook(webhook_url, port)
         else:
+            print(f"🔄 Режим: Polling")
             await bot.start_polling()
             
     except Exception as e:
-        logger.error(f"Критическая ошибка: {e}")
+        print(f"❌ Критическая ошибка: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 if __name__ == "__main__":
@@ -608,4 +528,10 @@ if __name__ == "__main__":
     )
     
     # Запуск бота
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n👋 Бот остановлен пользователем")
+    except Exception as e:
+        print(f"\n❌ Фатальная ошибка: {e}")
+        exit(1)
