@@ -26,12 +26,7 @@ aiohttp==3.9.3
 aiofiles==23.2.0
 
 # Keep Alive
-threading
-time
-os
+# threading, time, and os are built-in Python modules
 
 # Additional utilities
-json
-base64
-io
-re
+# json, base64, io, re are built-in Python modules
