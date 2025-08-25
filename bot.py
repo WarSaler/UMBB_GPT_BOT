@@ -552,7 +552,7 @@ class TelegramBot:
             await self.application.stop()
             logger.info("Бот остановлен")
     
-    async def start_webhook(self, webhook_url: str, port: int = 8000):
+    async def start_webhook(self, webhook_url: str, port: int = 10000):
         """Запуск бота в режиме webhook для Render"""
         logger.info(f"Настройка webhook: {webhook_url}")
         
@@ -589,7 +589,7 @@ async def main():
         
         # Проверяем, нужен ли webhook режим
         webhook_url = os.getenv('WEBHOOK_URL')
-        port = int(os.getenv('PORT', '8000'))
+        port = int(os.getenv('PORT', '10000'))
         
         if webhook_url:
             await bot.start_webhook(webhook_url, port)
