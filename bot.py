@@ -45,6 +45,16 @@ try:
 except ImportError as e:
     telegram_available = False
     logger.error(f"❌ Ошибка импорта telegram: {e}")
+    # Создаем заглушки для типов если импорт не удался
+    Update = None
+    InlineKeyboardButton = None
+    InlineKeyboardMarkup = None
+    Application = None
+    CommandHandler = None
+    MessageHandler = None
+    CallbackQueryHandler = None
+    ContextTypes = None
+    filters = None
 
 # Получение переменных окружения
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('BOT_TOKEN')
@@ -52,7 +62,10 @@ PORT = int(os.getenv('PORT', 10000))
 WEBHOOK_URL = os.getenv('RENDER_EXTERNAL_URL', f'https://umbb-gpt-bot.onrender.com')
 
 # Глобальная переменная для приложения Telegram
-telegram_app: Optional[Application] = None
+if telegram_available and Application:
+    telegram_app: Optional[Application] = None
+else:
+    telegram_app = None
 
 # Создание FastAPI приложения
 if fastapi_available:
@@ -114,16 +127,30 @@ if fastapi_available and app:
 if telegram_available:
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /start"""
+        user = update.effective_user
+        logger.info(f"Пользователь {user.username} запустил бота")
+        
+        # Создаем клавиатуру с кнопками
         keyboard = [
-            [InlineKeyboardButton("ℹ️ Помощь", callback_data='help')],
+            [InlineKeyboardButton("🆘 Помощь", callback_data='help')],
             [InlineKeyboardButton("📊 Статус", callback_data='status')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
+        welcome_message = f"""
+🤖 **Привет, {user.first_name}!**
+
+Я - твой Telegram бот с поддержкой:
+• 📝 Обработки текста
+• 📸 Анализа изображений  
+• 🔗 Webhook интеграции
+
+💡 Отправь мне сообщение или используй кнопки ниже!
+        """
+        
         await update.message.reply_text(
-            f"👋 Привет, {update.effective_user.first_name}!\n\n"
-            "🤖 Я многофункциональный Telegram бот.\n"
-            "📝 Отправь мне текст или изображение для обработки.",
+            welcome_message,
+            parse_mode='Markdown',
             reply_markup=reply_markup
         )
 
@@ -217,7 +244,7 @@ async def setup_telegram_bot():
         webhook_url = f"{WEBHOOK_URL}/webhook"
         await telegram_app.bot.set_webhook(
             url=webhook_url,
-            allowed_updates=Update.ALL_TYPES
+            allowed_updates=["message", "callback_query"]
         )
         
         logger.info(f"✅ Telegram бот настроен с webhook: {webhook_url}")
@@ -254,6 +281,23 @@ def main():
     
     if not fastapi_available:
         logger.error("❌ FastAPI недоступен! Установите: pip install fastapi uvicorn")
+        # Запускаем простой HTTP сервер без FastAPI
+        import http.server
+        import socketserver
+        
+        class SimpleHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+                self.wfile.write(b'<h1>Bot Server Running</h1><p>FastAPI not available, but server is running.</p>')
+            
+            def log_message(self, format, *args):
+                logger.info(f"HTTP: {format % args}")
+        
+        with socketserver.TCPServer(("", PORT), SimpleHandler) as httpd:
+            logger.info(f"🚀 Запуск простого HTTP сервера на порту {PORT}")
+            httpd.serve_forever()
         return
     
     try:
