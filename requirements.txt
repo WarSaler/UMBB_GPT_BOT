@@ -1,5 +1,5 @@
 # Telegram Bot Dependencies
-pyTelegramBotAPI==4.14.0
+python-telegram-bot==21.0.1
 
 # OpenAI API - fixed version to avoid httpx conflicts
 openai==1.12.0
