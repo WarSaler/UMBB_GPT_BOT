@@ -19,36 +19,9 @@ import sys
 from datetime import datetime
 import base64
 
-# Автоматическая установка и импорт OpenAI
-try:
-    import openai
-    OPENAI_AVAILABLE = True
-    print(f"✅ OpenAI успешно импортирован. Версия: {openai.__version__}")
-except ImportError as e:
-    print(f"❌ OpenAI не установлен: {e}")
-    print("🔄 Попытка автоматической установки OpenAI...")
-    try:
-        import subprocess
-        import sys
-        result = subprocess.run([sys.executable, '-m', 'pip', 'install', 'openai>=1.0.0'], 
-                              capture_output=True, text=True, timeout=60)
-        if result.returncode == 0:
-            print("✅ OpenAI успешно установлен!")
-            import openai
-            OPENAI_AVAILABLE = True
-            print(f"✅ OpenAI импортирован. Версия: {openai.__version__}")
-        else:
-            print(f"❌ Ошибка установки OpenAI: {result.stderr}")
-            OPENAI_AVAILABLE = False
-            print("⚠️ Используются базовые ответы.")
-    except Exception as install_error:
-        print(f"❌ Критическая ошибка установки OpenAI: {install_error}")
-        OPENAI_AVAILABLE = False
-        print("⚠️ Используются базовые ответы.")
-except Exception as e:
-    OPENAI_AVAILABLE = False
-    print(f"❌ Ошибка импорта OpenAI: {e}")
-    print("⚠️ Используются базовые ответы.")
+# OpenAI API через HTTP запросы (без внешних зависимостей)
+OPENAI_AVAILABLE = True  # Всегда доступен через HTTP
+print("✅ OpenAI API клиент готов (HTTP режим без внешних зависимостей)")
 
 # Настройка логирования
 logging.basicConfig(
@@ -62,9 +35,6 @@ BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', 'dummy_token')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 PORT = int(os.getenv('PORT', 10000))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://umbb-gpt-bot.onrender.com')
-
-# Принудительный перезапуск деплоя для установки OpenAI
-FORCE_REDEPLOY = True
 
 class TelegramAPI:
     """Простой клиент для Telegram Bot API"""
@@ -121,48 +91,55 @@ class TelegramAPI:
             return {'ok': False, 'error': str(e)}
 
 class OpenAIAPI:
-    """Клиент для работы с OpenAI API"""
+    """HTTP клиент для OpenAI API без внешних зависимостей"""
     
     def __init__(self, api_key):
         self.api_key = api_key
-        if OPENAI_AVAILABLE and api_key:
-            openai.api_key = api_key
+        self.base_url = "https://api.openai.com/v1"
     
     def is_available(self):
         """Проверка доступности OpenAI API"""
-        return OPENAI_AVAILABLE and bool(self.api_key)
+        return bool(self.api_key)
     
     def generate_text_response(self, user_message):
-        """Генерация ответа на текстовое сообщение"""
+        """Генерация ответа через OpenAI API с HTTP запросами"""
         if not self.is_available():
             return self._get_fallback_response(user_message)
         
         try:
-            client = openai.OpenAI(api_key=self.api_key)
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
+            # Подготовка данных для запроса
+            data = {
+                "model": "gpt-3.5-turbo",
+                "messages": [
                     {"role": "system", "content": "Ты полезный ассистент UMBB GPT Bot. Отвечай на русском языке, будь дружелюбным и информативным."},
                     {"role": "user", "content": user_message}
                 ],
-                max_tokens=1000,
-                temperature=0.7
-            )
-            return response.choices[0].message.content
+                "max_tokens": 1000,
+                "temperature": 0.7
+            }
+            
+            # HTTP запрос к OpenAI API
+            response = self._make_openai_request("/chat/completions", data)
+            if response and "choices" in response and len(response["choices"]) > 0:
+                return response["choices"][0]["message"]["content"]
+            else:
+                logger.error("❌ Некорректный ответ от OpenAI API")
+                return self._get_fallback_response(user_message)
+                
         except Exception as e:
             logger.error(f"❌ Ошибка OpenAI API: {e}")
             return self._get_fallback_response(user_message)
     
     def analyze_image(self, image_url, user_message="Опиши это изображение"):
-        """Анализ изображения через OpenAI Vision API"""
+        """Анализ изображения через OpenAI Vision API с HTTP запросами"""
         if not self.is_available():
             return "🔍 Анализ изображений недоступен. Проверьте настройки OpenAI API."
         
         try:
-            client = openai.OpenAI(api_key=self.api_key)
-            response = client.chat.completions.create(
-                model="gpt-4-vision-preview",
-                messages=[
+            # Подготовка данных для запроса к Vision API
+            data = {
+                "model": "gpt-4-vision-preview",
+                "messages": [
                     {
                         "role": "user",
                         "content": [
@@ -171,12 +148,48 @@ class OpenAIAPI:
                         ]
                     }
                 ],
-                max_tokens=1000
-            )
-            return response.choices[0].message.content
+                "max_tokens": 1000
+            }
+            
+            # HTTP запрос к OpenAI Vision API
+            response = self._make_openai_request("/chat/completions", data)
+            if response and "choices" in response and len(response["choices"]) > 0:
+                return response["choices"][0]["message"]["content"]
+            else:
+                logger.error("❌ Некорректный ответ от OpenAI Vision API")
+                return "❌ Не удалось проанализировать изображение."
+                
         except Exception as e:
             logger.error(f"❌ Ошибка анализа изображения: {e}")
             return f"❌ Не удалось проанализировать изображение: {str(e)}"
+    
+    def _make_openai_request(self, endpoint, data):
+        """Выполнение HTTP запроса к OpenAI API"""
+        url = f"{self.base_url}{endpoint}"
+        
+        # Подготовка заголовков
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Подготовка данных
+        json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        
+        # Создание запроса
+        req = urllib.request.Request(url, data=json_data, headers=headers, method='POST')
+        
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                response_data = json.loads(response.read().decode('utf-8'))
+                return response_data
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8')
+            logger.error(f"❌ HTTP ошибка OpenAI API: {e.code} - {error_body}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Ошибка запроса к OpenAI API: {e}")
+            return None
     
     def _get_fallback_response(self, user_message):
         """Базовые ответы без ИИ"""
