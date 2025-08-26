@@ -161,6 +161,8 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token_from_botfather
 OPENAI_API_KEY=your_openai_api_key
 ```
 
+![Environment Variables](Environment.jpeg)
+
 **Настройки OpenAI:**
 ```
 OPENAI_MODEL=gpt-4o-mini
