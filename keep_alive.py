@@ -7,13 +7,14 @@ Keep Alive Script для предотвращения засыпания сер�
 чтобы предотвратить его засыпание на бесплатном хостинге.
 """
 
-import asyncio
-import aiohttp
+import threading
 import time
+import urllib.request
+import urllib.error
 from datetime import datetime
 from typing import Optional
+import os
 from loguru import logger
-from config import get_config
 
 
 class KeepAliveService:
@@ -22,18 +23,17 @@ class KeepAliveService:
     """
     
     def __init__(self):
-        self.config = get_config()
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.thread: Optional[threading.Thread] = None
         self.is_running = False
         self.ping_count = 0
         self.failed_pings = 0
         self.last_successful_ping = None
         self.start_time = datetime.now()
         
-        # Настройки из конфигурации
-        self.enabled = self.config.KEEP_ALIVE_ENABLED
-        self.interval = self.config.KEEP_ALIVE_INTERVAL
-        self.url = self.config.KEEP_ALIVE_URL
+        # Настройки из переменных окружения
+        self.enabled = os.getenv('KEEP_ALIVE_ENABLED', 'true').lower() == 'true'
+        self.interval = int(os.getenv('KEEP_ALIVE_INTERVAL', '60'))
+        self.url = os.getenv('KEEP_ALIVE_URL') or os.getenv('WEBHOOK_URL') or 'http://localhost:10000'
         self.timeout = 10  # Таймаут для запросов
         self.max_retries = 3  # Максимальное количество повторных попыток
         self.retry_delay = 5  # Задержка между повторными попытками
@@ -43,16 +43,7 @@ class KeepAliveService:
         logger.info(f"URL: {self.url}")
         logger.info(f"Interval: {self.interval} секунд")
     
-    async def __aenter__(self):
-        """Асинхронный контекстный менеджер - вход"""
-        await self.start()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Асинхронный контекстный менеджер - выход"""
-        await self.stop()
-    
-    async def start(self):
+    def start(self):
         """Запуск сервиса keep-alive"""
         if not self.enabled:
             logger.info("KeepAlive сервис отключен в конфигурации")
@@ -62,43 +53,25 @@ class KeepAliveService:
             logger.warning("KeepAlive сервис уже запущен")
             return
         
-        # Создаем HTTP сессию
-        timeout = aiohttp.ClientTimeout(total=self.timeout)
-        connector = aiohttp.TCPConnector(
-            limit=10,
-            limit_per_host=5,
-            keepalive_timeout=30,
-            enable_cleanup_closed=True
-        )
-        
-        self.session = aiohttp.ClientSession(
-            timeout=timeout,
-            connector=connector,
-            headers={
-                'User-Agent': 'UMBB-GPT-Bot-KeepAlive/1.0',
-                'Accept': 'application/json, text/plain, */*',
-                'Connection': 'keep-alive'
-            }
-        )
-        
         self.is_running = True
         self.start_time = datetime.now()
         
         logger.info("KeepAlive сервис запущен")
         
-        # Запускаем основной цикл
-        asyncio.create_task(self._keep_alive_loop())
+        # Запускаем основной цикл в отдельном потоке
+        self.thread = threading.Thread(target=self._keep_alive_loop, daemon=True)
+        self.thread.start()
     
-    async def stop(self):
+    def stop(self):
         """Остановка сервиса keep-alive"""
         if not self.is_running:
             return
         
         self.is_running = False
         
-        if self.session:
-            await self.session.close()
-            self.session = None
+        # Ожидаем завершения потока
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=5)
         
         uptime = datetime.now() - self.start_time
         logger.info(f"KeepAlive сервис остановлен")
@@ -106,14 +79,14 @@ class KeepAliveService:
         logger.info(f"Всего пингов: {self.ping_count}")
         logger.info(f"Неудачных пингов: {self.failed_pings}")
     
-    async def _keep_alive_loop(self):
+    def _keep_alive_loop(self):
         """Основной цикл keep-alive"""
         logger.info(f"Запуск цикла keep-alive с интервалом {self.interval} секунд")
         
         while self.is_running:
             try:
                 # Выполняем пинг
-                success = await self._ping_server()
+                success = self._ping_server()
                 
                 if success:
                     self.last_successful_ping = datetime.now()
@@ -125,57 +98,58 @@ class KeepAliveService:
                     logger.warning(f"Неудачный пинг #{self.failed_pings}")
                 
                 # Ждем до следующего пинга
-                await asyncio.sleep(self.interval)
+                time.sleep(self.interval)
                 
-            except asyncio.CancelledError:
-                logger.info("KeepAlive цикл был отменен")
-                break
             except Exception as e:
                 logger.error(f"Ошибка в цикле keep-alive: {e}")
-                await asyncio.sleep(self.retry_delay)
+                time.sleep(self.retry_delay)
     
-    async def _ping_server(self) -> bool:
+    def _ping_server(self) -> bool:
         """Отправка пинга на сервер"""
-        if not self.session:
-            logger.error("HTTP сессия не инициализирована")
-            return False
-        
         start_time = time.time()
         
         for attempt in range(self.max_retries):
             try:
                 self.ping_count += 1
                 
-                # Отправляем GET запрос на health endpoint
-                async with self.session.get(self.url) as response:
+                # Создаем HTTP запрос
+                request = urllib.request.Request(self.url)
+                request.add_header('User-Agent', 'KeepAlive-Service/1.0')
+                
+                # Отправляем GET запрос
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     response_time = (time.time() - start_time) * 1000
+                    status_code = response.getcode()
                     
-                    if response.status == 200:
+                    if status_code == 200:
                         logger.debug(
                             f"Пинг #{self.ping_count} успешен "
-                            f"(статус: {response.status}, время: {response_time:.1f}мс)"
+                            f"(статус: {status_code}, время: {response_time:.1f}мс)"
                         )
                         return True
                     else:
                         logger.warning(
                             f"Пинг #{self.ping_count} неудачен "
-                            f"(статус: {response.status}, время: {response_time:.1f}мс)"
+                            f"(статус: {status_code}, время: {response_time:.1f}мс)"
                         )
                         
                         # Если статус не 200, но сервер отвечает, считаем это частичным успехом
-                        if response.status < 500:
+                        if status_code < 500:
                             return True
             
-            except aiohttp.ClientError as e:
-                logger.warning(f"Ошибка HTTP клиента при пинге #{self.ping_count} (попытка {attempt + 1}): {e}")
-            except asyncio.TimeoutError:
-                logger.warning(f"Таймаут при пинге #{self.ping_count} (попытка {attempt + 1})")
+            except urllib.error.HTTPError as e:
+                logger.warning(f"HTTP ошибка при пинге #{self.ping_count} (попытка {attempt + 1}): {e.code} {e.reason}")
+                # Если статус < 500, считаем частичным успехом
+                if e.code < 500:
+                    return True
+            except urllib.error.URLError as e:
+                logger.warning(f"URL ошибка при пинге #{self.ping_count} (попытка {attempt + 1}): {e}")
             except Exception as e:
                 logger.error(f"Неожиданная ошибка при пинге #{self.ping_count} (попытка {attempt + 1}): {e}")
             
             # Если это не последняя попытка, ждем перед повтором
             if attempt < self.max_retries - 1:
-                await asyncio.sleep(self.retry_delay)
+                time.sleep(self.retry_delay)
         
         return False
     
@@ -223,26 +197,23 @@ _keep_alive_service: Optional[KeepAliveService] = None
 
 
 def get_keep_alive_service() -> KeepAliveService:
-    """Получение глобального экземпляра сервиса keep-alive"""
+    """Получение экземпляра сервиса keep-alive (Singleton)"""
     global _keep_alive_service
     if _keep_alive_service is None:
         _keep_alive_service = KeepAliveService()
     return _keep_alive_service
 
 
-async def start_keep_alive():
+def start_keep_alive():
     """Запуск сервиса keep-alive"""
     service = get_keep_alive_service()
-    await service.start()
-    return service
+    service.start()
 
 
-async def stop_keep_alive():
+def stop_keep_alive():
     """Остановка сервиса keep-alive"""
-    global _keep_alive_service
-    if _keep_alive_service:
-        await _keep_alive_service.stop()
-        _keep_alive_service = None
+    service = get_keep_alive_service()
+    service.stop()
 
 
 if __name__ == "__main__":

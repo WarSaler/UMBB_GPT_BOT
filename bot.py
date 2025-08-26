@@ -18,6 +18,16 @@ import time
 import sys
 from datetime import datetime
 import base64
+import asyncio
+
+# Импорт keep-alive сервиса
+try:
+    from keep_alive import start_keep_alive, stop_keep_alive
+    KEEP_ALIVE_AVAILABLE = True
+    print("✅ Keep-alive сервис доступен")
+except ImportError as e:
+    KEEP_ALIVE_AVAILABLE = False
+    print(f"⚠️ Keep-alive сервис недоступен: {e}")
 
 # OpenAI API через HTTP запросы (без внешних зависимостей)
 OPENAI_AVAILABLE = True  # Всегда доступен через HTTP
@@ -552,12 +562,34 @@ def main():
     else:
         logger.warning("🔑 OpenAI API ключ не настроен!")
     
+    # Запуск keep-alive сервиса
+    if KEEP_ALIVE_AVAILABLE:
+        try:
+            start_keep_alive()
+            logger.info("✅ Keep-alive сервис запущен")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка запуска keep-alive сервиса: {e}")
+    
     try:
         run_server()
     except KeyboardInterrupt:
         logger.info("👋 Бот остановлен пользователем")
+        # Остановка keep-alive сервиса при завершении
+        if KEEP_ALIVE_AVAILABLE:
+            try:
+                stop_keep_alive()
+                logger.info("✅ Keep-alive сервис остановлен")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка остановки keep-alive сервиса: {e}")
     except Exception as e:
         logger.error(f"💥 Критическая ошибка: {e}")
+        # Остановка keep-alive сервиса при ошибке
+        if KEEP_ALIVE_AVAILABLE:
+            try:
+                stop_keep_alive()
+                logger.info("✅ Keep-alive сервис остановлен")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка остановки keep-alive сервиса: {e}")
         raise
 
 if __name__ == '__main__':
