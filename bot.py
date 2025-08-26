@@ -232,6 +232,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
                         <strong>🔗 Webhook URL:</strong> {self.webhook_url}/webhook
                     </div>
                     
+                    <div class="status {'success' if OPENAI_AVAILABLE else 'warning'}">
+                        <strong>🧠 OpenAI API:</strong> 
+                        {'✅ Доступен' if OPENAI_AVAILABLE else '❌ Недоступен'}
+                        {f' (ключ: {"✅ Настроен" if OPENAI_API_KEY and len(OPENAI_API_KEY) > 10 else "❌ Не настроен"})' if OPENAI_AVAILABLE else ''}
+                    </div>
+                    
                     <div class="status info">
                         <strong>📱 Использование:</strong><br>
                         • Отправьте /start боту для начала<br>
@@ -261,6 +267,25 @@ class WebhookHandler(BaseHTTPRequestHandler):
             }
             
             self.wfile.write(json.dumps(health_data, ensure_ascii=False).encode('utf-8'))
+            
+        elif self.path == '/diagnostics':
+            # Диагностический endpoint
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            
+            diagnostics_data = {
+                'bot_status': 'running',
+                'bot_token_set': BOT_TOKEN != 'dummy_token',
+                'openai_available': OPENAI_AVAILABLE,
+                'openai_key_set': bool(OPENAI_API_KEY and len(OPENAI_API_KEY) > 10),
+                'webhook_url': f'{WEBHOOK_URL}/webhook',
+                'port': PORT,
+                'python_version': sys.version,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            self.wfile.write(json.dumps(diagnostics_data, ensure_ascii=False, indent=2).encode('utf-8'))
             
         else:
             self.send_response(404)
