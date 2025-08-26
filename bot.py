@@ -426,11 +426,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
                         if file_info and 'file_path' in file_info:
                             file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info['file_path']}"
                             
-                            # Анализируем изображение с помощью ИИ
-                            caption = message.get('caption', 'Опиши это изображение подробно')
-                            logger.info(f"🔍 Анализ изображения: {caption}")
+                            # Переводим текст с изображения на английский язык
+                            translation_prompt = "Переведи весь текст с этого изображения на английский язык. Предоставь только переведенный текст без дополнительных комментариев. Если на изображении нет текста, напиши 'No text found in the image'."
+                            logger.info(f"🔍 Анализ изображения: {translation_prompt}")
                             
-                            response = openai_api.analyze_image(file_url, caption)
+                            response = openai_api.analyze_image(file_url, translation_prompt)
                         else:
                             response = "❌ Не удалось получить изображение для анализа."
                     except Exception as e:
