@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Простой Telegram Bot для Render
-Минимальные зависимости, максимальная совместимость
+Telegram Bot для Render с webhook поддержкой
+Использует python-telegram-bot и FastAPI
 """
 
 import os
-import json
 import asyncio
 import logging
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
-import threading
-import time
+from typing import Optional
 
 # Настройка логирования
 logging.basicConfig(
@@ -21,238 +17,245 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Попытка импорта python-dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logger.info("✅ python-dotenv загружен успешно")
+except ImportError:
+    logger.warning("python-dotenv не найден, используем системные переменные")
+
+# Попытка импорта FastAPI
+try:
+    from fastapi import FastAPI, Request
+    import uvicorn
+    fastapi_available = True
+    logger.info("✅ FastAPI и uvicorn успешно импортированы")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта FastAPI: {e}")
+    fastapi_available = False
+    FastAPI = None
+    uvicorn = None
+
+# Попытка импорта telegram
+try:
+    from telegram import Update, Bot
+    from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+    telegram_available = True
+    logger.info("✅ Telegram модули успешно импортированы")
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта telegram: {e}")
+    telegram_available = False
+    Update = None
+    Bot = None
+    Application = None
+    CommandHandler = None
+    MessageHandler = None
+    filters = None
+    CallbackQueryHandler = None
+
 # Получение переменных окружения
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or os.getenv('BOT_TOKEN')
 PORT = int(os.getenv('PORT', 10000))
 WEBHOOK_URL = os.getenv('RENDER_EXTERNAL_URL', 'https://umbb-gpt-bot.onrender.com')
 
-# Проверка наличия токена
-if not BOT_TOKEN:
-    logger.error("❌ TELEGRAM_BOT_TOKEN не найден в переменных окружения")
-    BOT_TOKEN = "dummy_token"  # Заглушка для предотвращения краха
+# Глобальные переменные
+telegram_app: Optional[Application] = None
+fastapi_app: Optional[FastAPI] = None
 
-class TelegramWebhookHandler(BaseHTTPRequestHandler):
-    """Обработчик webhook запросов от Telegram"""
-    
-    def do_GET(self):
-        """Обработка GET запросов"""
-        if self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>UMBB GPT Bot</title>
-                <meta charset="utf-8">
-            </head>
-            <body>
-                <h1>🤖 UMBB GPT Bot</h1>
-                <p>✅ Бот работает и готов к приему сообщений!</p>
-                <p>🔗 Webhook URL: {WEBHOOK_URL}/webhook</p>
-                <p>🚀 Статус: Активен</p>
-                <p>⏰ Время: {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
-            </body>
-            </html>
-            """
-            
-            self.wfile.write(html_content.encode('utf-8'))
-            
-        elif self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            health_data = {
-                "status": "healthy",
-                "bot_token_set": bool(BOT_TOKEN and BOT_TOKEN != "dummy_token"),
-                "webhook_url": f"{WEBHOOK_URL}/webhook",
-                "timestamp": time.time()
-            }
-            
-            self.wfile.write(json.dumps(health_data).encode('utf-8'))
-            
-        else:
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b'Not Found')
-    
-    def do_POST(self):
-        """Обработка POST запросов (webhook от Telegram)"""
-        if self.path == '/webhook':
-            try:
-                content_length = int(self.headers['Content-Length'])
-                post_data = self.rfile.read(content_length)
-                
-                # Парсим JSON данные от Telegram
-                update_data = json.loads(post_data.decode('utf-8'))
-                
-                logger.info(f"📨 Получено обновление: {update_data}")
-                
-                # Обрабатываем обновление
-                self.process_telegram_update(update_data)
-                
-                # Отправляем успешный ответ
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
-                
-            except Exception as e:
-                logger.error(f"❌ Ошибка обработки webhook: {e}")
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
-        else:
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b'Not Found')
-    
-    def process_telegram_update(self, update_data):
-        """Обработка обновлений от Telegram"""
-        try:
-            if 'message' in update_data:
-                message = update_data['message']
-                chat_id = message['chat']['id']
-                
-                if 'text' in message:
-                    text = message['text']
-                    logger.info(f"💬 Сообщение от {chat_id}: {text}")
-                    
-                    # Обрабатываем команды
-                    if text.startswith('/start'):
-                        self.send_telegram_message(chat_id, "🤖 Привет! Я UMBB GPT Bot. Отправь мне сообщение!")
-                    elif text.startswith('/help'):
-                        help_text = (
-                            "🆘 Помощь по боту:\n\n"
-                            "/start - Запустить бота\n"
-                            "/help - Показать эту справку\n\n"
-                            "Просто отправь мне любое сообщение, и я отвечу!"
-                        )
-                        self.send_telegram_message(chat_id, help_text)
-                    else:
-                        # Простой ответ на обычные сообщения
-                        response = f"📝 Получил твое сообщение: {text}\n\n🤖 Это простой ответ от UMBB GPT Bot!"
-                        self.send_telegram_message(chat_id, response)
-                        
-                elif 'photo' in message:
-                    logger.info(f"📸 Фото от {chat_id}")
-                    self.send_telegram_message(chat_id, "📸 Получил твое фото! Пока что я не умею их обрабатывать, но скоро научусь!")
-                    
-            elif 'callback_query' in update_data:
-                callback = update_data['callback_query']
-                chat_id = callback['message']['chat']['id']
-                data = callback['data']
-                
-                logger.info(f"🔘 Callback от {chat_id}: {data}")
-                self.send_telegram_message(chat_id, f"✅ Нажата кнопка: {data}")
-                
-        except Exception as e:
-            logger.error(f"❌ Ошибка обработки обновления: {e}")
-    
-    def send_telegram_message(self, chat_id, text):
-        """Отправка сообщения через Telegram Bot API"""
-        try:
-            import urllib.request
-            import urllib.parse
-            
-            if BOT_TOKEN == "dummy_token":
-                logger.warning("⚠️ Используется dummy токен, сообщение не отправлено")
-                return
-            
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            data = {
-                'chat_id': chat_id,
-                'text': text,
-                'parse_mode': 'HTML'
-            }
-            
-            data_encoded = urllib.parse.urlencode(data).encode('utf-8')
-            req = urllib.request.Request(url, data=data_encoded, method='POST')
-            
-            with urllib.request.urlopen(req) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                if result.get('ok'):
-                    logger.info(f"✅ Сообщение отправлено в чат {chat_id}")
-                else:
-                    logger.error(f"❌ Ошибка отправки: {result}")
-                    
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки сообщения: {e}")
-    
-    def log_message(self, format, *args):
-        """Переопределяем логирование для уменьшения шума"""
-        pass
+# Telegram bot функции (только если telegram доступен)
+if telegram_available:
+    async def start_command(update: Update, context) -> None:
+        """Обработчик команды /start"""
+        await update.message.reply_text(
+            "🤖 Привет! Я UMBB GPT Bot.\n\n"
+            "Отправь мне текст или фото, и я помогу тебе!\n\n"
+            "Команды:\n"
+            "/start - Начать работу\n"
+            "/help - Помощь"
+        )
 
-def setup_webhook():
-    """Настройка webhook для Telegram"""
+    async def help_command(update: Update, context) -> None:
+        """Обработчик команды /help"""
+        await update.message.reply_text(
+            "🆘 Помощь:\n\n"
+            "• Отправь текст - получишь ответ от GPT\n"
+            "• Отправь фото - получишь описание\n"
+            "• /start - Начать заново\n"
+            "• /help - Эта справка"
+        )
+
+    async def handle_message(update: Update, context) -> None:
+        """Обработчик текстовых сообщений"""
+        user_message = update.message.text
+        logger.info(f"Получено сообщение: {user_message}")
+        
+        # Простой ответ (можно расширить с помощью OpenAI API)
+        response = f"Получил ваше сообщение: {user_message}\n\nЭто базовый ответ. Для полной функциональности подключите OpenAI API."
+        
+        await update.message.reply_text(response)
+
+    async def handle_photo(update: Update, context) -> None:
+        """Обработчик фотографий"""
+        logger.info("Получено фото")
+        
+        response = "📸 Фото получено!\n\nДля анализа изображений подключите OpenAI Vision API."
+        
+        await update.message.reply_text(response)
+
+    async def button_callback(update: Update, context) -> None:
+        """Обработчик нажатий на кнопки"""
+        query = update.callback_query
+        await query.answer()
+        
+        await query.edit_message_text(f"Выбрано: {query.data}")
+
+def setup_telegram_bot() -> Optional[Application]:
+    """Настройка Telegram бота"""
+    if not BOT_TOKEN:
+        logger.error("❌ TELEGRAM_BOT_TOKEN не найден в переменных окружения")
+        return None
+    
+    if not telegram_available:
+        logger.error("❌ Telegram модули недоступны")
+        return None
+    
     try:
-        import urllib.request
-        import urllib.parse
+        # Создание приложения
+        app = Application.builder().token(BOT_TOKEN).build()
         
-        if BOT_TOKEN == "dummy_token":
-            logger.warning("⚠️ Используется dummy токен, webhook не настроен")
-            return False
+        # Добавление обработчиков
+        app.add_handler(CommandHandler("start", start_command))
+        app.add_handler(CommandHandler("help", help_command))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+        app.add_handler(CallbackQueryHandler(button_callback))
         
-        webhook_url = f"{WEBHOOK_URL}/webhook"
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+        logger.info("✅ Telegram бот настроен успешно")
+        return app
         
-        data = {
-            'url': webhook_url,
-            'allowed_updates': json.dumps(["message", "callback_query"])
-        }
-        
-        data_encoded = urllib.parse.urlencode(data).encode('utf-8')
-        req = urllib.request.Request(url, data=data_encoded, method='POST')
-        
-        with urllib.request.urlopen(req) as response:
-            result = json.loads(response.read().decode('utf-8'))
-            if result.get('ok'):
-                logger.info(f"✅ Webhook настроен: {webhook_url}")
-                return True
-            else:
-                logger.error(f"❌ Ошибка настройки webhook: {result}")
-                return False
-                
     except Exception as e:
-        logger.error(f"❌ Ошибка настройки webhook: {e}")
+        logger.error(f"❌ Ошибка настройки Telegram бота: {e}")
+        return None
+
+def setup_fastapi() -> Optional[FastAPI]:
+    """Настройка FastAPI приложения"""
+    if not fastapi_available:
+        logger.error("❌ FastAPI недоступен")
+        return None
+    
+    try:
+        app = FastAPI(title="UMBB GPT Bot", version="1.0.0")
+        
+        @app.get("/")
+        async def root():
+            return {
+                "status": "ok",
+                "message": "UMBB GPT Bot работает",
+                "telegram_available": telegram_available,
+                "fastapi_available": fastapi_available
+            }
+        
+        @app.get("/health")
+        async def health():
+            return {"status": "healthy"}
+        
+        if telegram_available and telegram_app:
+            @app.post("/webhook")
+            async def webhook(request: Request):
+                """Обработка webhook от Telegram"""
+                try:
+                    json_data = await request.json()
+                    update = Update.de_json(json_data, telegram_app.bot)
+                    await telegram_app.process_update(update)
+                    return {"status": "ok"}
+                except Exception as e:
+                    logger.error(f"Ошибка обработки webhook: {e}")
+                    return {"status": "error", "message": str(e)}
+        
+        logger.info("✅ FastAPI настроен успешно")
+        return app
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка настройки FastAPI: {e}")
+        return None
+
+async def setup_webhook():
+    """Установка webhook для Telegram"""
+    if not telegram_available or not telegram_app:
+        logger.error("❌ Telegram недоступен для установки webhook")
+        return False
+    
+    try:
+        webhook_url = f"{WEBHOOK_URL}/webhook"
+        await telegram_app.bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=["message", "callback_query"]
+        )
+        logger.info(f"✅ Webhook установлен: {webhook_url}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка установки webhook: {e}")
         return False
 
 def run_server():
-    """Запуск HTTP сервера"""
-    try:
-        server = HTTPServer(('0.0.0.0', PORT), TelegramWebhookHandler)
-        logger.info(f"🚀 Сервер запущен на порту {PORT}")
-        logger.info(f"🔗 Webhook URL: {WEBHOOK_URL}/webhook")
+    """Запуск сервера"""
+    if not fastapi_available:
+        logger.error("❌ FastAPI недоступен! Установите: pip install fastapi uvicorn")
+        # Простой HTTP сервер как fallback
+        from http.server import HTTPServer, BaseHTTPRequestHandler
         
-        # Настраиваем webhook в отдельном потоке
-        webhook_thread = threading.Thread(target=setup_webhook)
-        webhook_thread.daemon = True
-        webhook_thread.start()
+        class SimpleHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+                self.wfile.write(b'<h1>UMBB GPT Bot</h1><p>FastAPI unavailable, using simple server</p>')
+            
+            def log_message(self, format, *args):
+                logger.info(f"HTTP: {format % args}")
         
-        # Запускаем сервер
+        logger.info(f"🚀 Запуск простого HTTP сервера на порту {PORT}")
+        server = HTTPServer(('0.0.0.0', PORT), SimpleHandler)
         server.serve_forever()
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка запуска сервера: {e}")
-        raise
-
-def main():
-    """Главная функция"""
-    logger.info("🤖 Запуск UMBB GPT Bot...")
-    logger.info(f"🔑 Токен установлен: {'✅' if BOT_TOKEN and BOT_TOKEN != 'dummy_token' else '❌'}")
-    logger.info(f"🌐 Порт: {PORT}")
-    logger.info(f"🔗 Webhook URL: {WEBHOOK_URL}")
+        return
     
     try:
-        run_server()
-    except KeyboardInterrupt:
-        logger.info("👋 Бот остановлен пользователем")
+        logger.info(f"🚀 Запуск FastAPI сервера на порту {PORT}")
+        uvicorn.run(
+            fastapi_app,
+            host="0.0.0.0",
+            port=PORT,
+            log_level="info"
+        )
     except Exception as e:
-        logger.error(f"💥 Критическая ошибка: {e}")
-        exit(1)
+        logger.error(f"❌ Ошибка запуска сервера: {e}")
+
+async def main():
+    """Главная функция"""
+    global telegram_app, fastapi_app
+    
+    logger.info("🤖 Запуск Telegram бота с webhook поддержкой...")
+    
+    # Настройка компонентов
+    telegram_app = setup_telegram_bot()
+    fastapi_app = setup_fastapi()
+    
+    if telegram_app:
+        # Инициализация Telegram бота
+        await telegram_app.initialize()
+        await telegram_app.start()
+        
+        # Установка webhook
+        await setup_webhook()
+    
+    # Запуск сервера
+    run_server()
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("🛑 Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}")
