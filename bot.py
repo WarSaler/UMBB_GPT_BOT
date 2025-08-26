@@ -138,7 +138,7 @@ class OpenAIAPI:
         try:
             # Подготовка данных для запроса к Vision API
             data = {
-                "model": "gpt-4-vision-preview",
+                "model": "gpt-4o",
                 "messages": [
                     {
                         "role": "user",
