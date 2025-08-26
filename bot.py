@@ -307,18 +307,23 @@ class WebhookHandler(BaseHTTPRequestHandler):
 def setup_webhook():
     """Установка webhook"""
     if BOT_TOKEN == 'dummy_token':
-        logger.warning("⚠️ Используется dummy token, webhook не будет установлен")
+        logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Нельзя установить webhook с dummy token!")
+        logger.error("💡 Установите реальный TELEGRAM_BOT_TOKEN в Render Dashboard")
+        logger.error("📋 Без токена бот не сможет получать сообщения от Telegram")
         return False
     
     telegram_api = TelegramAPI(BOT_TOKEN)
     
-    logger.info(f"🔗 Установка webhook: {WEBHOOK_URL}/webhook")
+    logger.info(f"🔗 Попытка установки webhook: {WEBHOOK_URL}/webhook")
+    logger.info(f"🔑 Используется токен: {BOT_TOKEN[:10]}...{BOT_TOKEN[-4:] if len(BOT_TOKEN) > 14 else 'короткий'}")
     
     if telegram_api.set_webhook(WEBHOOK_URL):
-        logger.info("✅ Webhook успешно установлен")
+        logger.info("✅ Webhook успешно установлен! Бот готов к работе")
+        logger.info("📱 Теперь можно отправлять сообщения боту в Telegram")
         return True
     else:
         logger.error("❌ Ошибка установки webhook")
+        logger.error("🔍 Возможные причины: неверный токен, проблемы с сетью, недоступность Telegram API")
         return False
 
 def run_server():
@@ -345,7 +350,19 @@ def main():
     logger.info(f"📊 Конфигурация:")
     logger.info(f"   • Порт: {PORT}")
     logger.info(f"   • Webhook URL: {WEBHOOK_URL}")
-    logger.info(f"   • Bot Token: {'✅ Установлен' if BOT_TOKEN != 'dummy_token' else '⚠️ Dummy token'}")
+    
+    # Детальная проверка токена
+    telegram_bot_token_env = os.getenv('TELEGRAM_BOT_TOKEN')
+    bot_token_env = os.getenv('BOT_TOKEN')
+    
+    logger.info(f"   • TELEGRAM_BOT_TOKEN из env: {'✅ Установлен' if telegram_bot_token_env else '❌ Не найден'}")
+    logger.info(f"   • BOT_TOKEN из env: {'✅ Установлен' if bot_token_env else '❌ Не найден'}")
+    logger.info(f"   • Итоговый токен: {'✅ Реальный токен' if BOT_TOKEN != 'dummy_token' else '⚠️ Dummy token - бот не будет работать!'}")
+    
+    if BOT_TOKEN == 'dummy_token':
+        logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Токен бота не установлен!")
+        logger.error("💡 Решение: Установите переменную TELEGRAM_BOT_TOKEN в Render Dashboard")
+        logger.error("🔗 Инструкция: https://render.com/docs/environment-variables")
     
     try:
         run_server()
