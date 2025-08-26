@@ -23,9 +23,15 @@ import base64
 try:
     import openai
     OPENAI_AVAILABLE = True
-except ImportError:
+    print(f"✅ OpenAI успешно импортирован. Версия: {openai.__version__}")
+except ImportError as e:
     OPENAI_AVAILABLE = False
-    print("⚠️ OpenAI не установлен. Используются базовые ответы.")
+    print(f"❌ OpenAI не установлен: {e}")
+    print("⚠️ Используются базовые ответы.")
+except Exception as e:
+    OPENAI_AVAILABLE = False
+    print(f"❌ Ошибка импорта OpenAI: {e}")
+    print("⚠️ Используются базовые ответы.")
 
 # Настройка логирования
 logging.basicConfig(
@@ -480,6 +486,13 @@ def main():
     logger.info(f"   • Webhook URL: {WEBHOOK_URL}")
     logger.info(f"   • Токен настроен: {'✅ Да' if BOT_TOKEN != 'dummy_token' else '❌ НЕТ'}")
     logger.info(f"   • Python версия: {sys.version}")
+    
+    # Диагностика OpenAI API
+    logger.info(f"🧠 OpenAI API статус: {'✅ Доступен' if OPENAI_AVAILABLE else '❌ Недоступен'}")
+    if OPENAI_API_KEY:
+        logger.info(f"🔑 OpenAI API ключ: {'✅ Настроен' if len(OPENAI_API_KEY) > 10 else '⚠️ Слишком короткий'}")
+    else:
+        logger.warning("🔑 OpenAI API ключ не настроен!")
     
     try:
         run_server()
