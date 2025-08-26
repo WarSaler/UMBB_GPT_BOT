@@ -1,5 +1,13 @@
 # UMBB GPT Bot - Финальная версия с ИИ интеграцией
-# Зависимости для работы с OpenAI API
+# Все необходимые зависимости
 
+# Telegram Bot API
+python-telegram-bot==21.0.1
+
+# OpenAI API для нейросети
 openai>=1.0.0
+
+# Дополнительные зависимости
 requests>=2.31.0
+loguru>=0.7.2
+python-dotenv>=1.0.0
