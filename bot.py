@@ -46,6 +46,9 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 PORT = int(os.getenv('PORT', 10000))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://umbb-gpt-bot.onrender.com')
 
+# Принудительный перезапуск деплоя для установки OpenAI
+FORCE_REDEPLOY = True
+
 class TelegramAPI:
     """Простой клиент для Telegram Bot API"""
     
