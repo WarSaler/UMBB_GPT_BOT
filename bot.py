@@ -157,11 +157,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             
             health_data = {
-                'status': 'ok',
-                'timestamp': datetime.now().isoformat(),
-                'bot_token_configured': BOT_TOKEN != 'dummy_token',
-                'webhook_url': f'{WEBHOOK_URL}/webhook',
-                'port': PORT
+                'status': 'healthy',
+                'bot_token_set': BOT_TOKEN != 'dummy_token',
+                'webhook_url': f'{WEBHOOK_URL}/webhook'
             }
             
             self.wfile.write(json.dumps(health_data, ensure_ascii=False).encode('utf-8'))
