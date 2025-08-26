@@ -17,6 +17,15 @@ import threading
 import time
 import sys
 from datetime import datetime
+import base64
+
+# Импорт OpenAI (опционально)
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("⚠️ OpenAI не установлен. Используются базовые ответы.")
 
 # Настройка логирования
 logging.basicConfig(
@@ -27,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Конфигурация
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', 'dummy_token')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 PORT = int(os.getenv('PORT', 10000))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', f'https://umbb-gpt-bot.onrender.com')
 
@@ -84,8 +94,90 @@ class TelegramAPI:
             logger.error(f"❌ Ошибка установки webhook: {e}")
             return {'ok': False, 'error': str(e)}
 
+class OpenAIAPI:
+    """Клиент для работы с OpenAI API"""
+    
+    def __init__(self, api_key):
+        self.api_key = api_key
+        if OPENAI_AVAILABLE and api_key:
+            openai.api_key = api_key
+    
+    def is_available(self):
+        """Проверка доступности OpenAI API"""
+        return OPENAI_AVAILABLE and bool(self.api_key)
+    
+    def generate_text_response(self, user_message):
+        """Генерация ответа на текстовое сообщение"""
+        if not self.is_available():
+            return self._get_fallback_response(user_message)
+        
+        try:
+            client = openai.OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "Ты полезный ассистент UMBB GPT Bot. Отвечай на русском языке, будь дружелюбным и информативным."},
+                    {"role": "user", "content": user_message}
+                ],
+                max_tokens=1000,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"❌ Ошибка OpenAI API: {e}")
+            return self._get_fallback_response(user_message)
+    
+    def analyze_image(self, image_url, user_message="Опиши это изображение"):
+        """Анализ изображения через OpenAI Vision API"""
+        if not self.is_available():
+            return "🔍 Анализ изображений недоступен. Проверьте настройки OpenAI API."
+        
+        try:
+            client = openai.OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(
+                model="gpt-4-vision-preview",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": f"Проанализируй это изображение и ответь на русском языке: {user_message}"},
+                            {"type": "image_url", "image_url": {"url": image_url}}
+                        ]
+                    }
+                ],
+                max_tokens=1000
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"❌ Ошибка анализа изображения: {e}")
+            return f"❌ Не удалось проанализировать изображение: {str(e)}"
+    
+    def _get_fallback_response(self, user_message):
+        """Базовые ответы без ИИ"""
+        responses = {
+            "погода": "🌤️ Для получения актуальной погоды рекомендую проверить местные метеосводки или погодные приложения.",
+            "новости": "📰 Для получения свежих новостей рекомендую посетить надежные новостные источники.",
+            "время": f"🕐 Текущее время сервера: {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}",
+            "привет": "👋 Привет! Как дела? Чем могу помочь?",
+            "как дела": "😊 У меня все отлично! Готов помочь вам с любыми вопросами.",
+            "спасибо": "🙏 Пожалуйста! Всегда рад помочь!"
+        }
+        
+        user_lower = user_message.lower()
+        for key, response in responses.items():
+            if key in user_lower:
+                return response
+        
+        return f"🤖 Получил ваше сообщение: '{user_message}'. \n\n💡 Для полноценной работы с ИИ необходимо настроить OpenAI API ключ."
+
 class WebhookHandler(BaseHTTPRequestHandler):
     """Обработчик HTTP запросов для webhook"""
+    
+    def __init__(self, *args, **kwargs):
+        self.bot_token = BOT_TOKEN
+        self.port = PORT
+        self.webhook_url = WEBHOOK_URL
+        super().__init__(*args, **kwargs)
     
     def log_message(self, format, *args):
         """Переопределяем для уменьшения шума в логах"""
@@ -121,17 +213,17 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     <h1>🤖 UMBB GPT Bot Status</h1>
                     
                     <div class="status success">
-                        <strong>✅ HTTP Сервер:</strong> Работает на порту {PORT}
+                        <strong>✅ HTTP Сервер:</strong> Работает на порту {self.port}
                     </div>
                     
-                    <div class="status {'success' if BOT_TOKEN != 'dummy_token' else 'error'}">
-                        <strong>{'✅' if BOT_TOKEN != 'dummy_token' else '❌'} Telegram Token:</strong> 
-                        {'Настроен' if BOT_TOKEN != 'dummy_token' else 'НЕ НАСТРОЕН'}
-                        {'' if BOT_TOKEN != 'dummy_token' else '<br><small>Установите TELEGRAM_BOT_TOKEN в Render Dashboard</small>'}
+                    <div class="status {'success' if self.bot_token != 'dummy_token' else 'error'}">
+                        <strong>{'✅' if self.bot_token != 'dummy_token' else '❌'} Telegram Token:</strong> 
+                        {'Настроен' if self.bot_token != 'dummy_token' else 'НЕ НАСТРОЕН'}
+                        {'' if self.bot_token != 'dummy_token' else '<br><small>Установите TELEGRAM_BOT_TOKEN в Render Dashboard</small>'}
                     </div>
                     
                     <div class="status info">
-                        <strong>🔗 Webhook URL:</strong> {WEBHOOK_URL}/webhook
+                        <strong>🔗 Webhook URL:</strong> {self.webhook_url}/webhook
                     </div>
                     
                     <div class="status info">
@@ -158,8 +250,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
             
             health_data = {
                 'status': 'healthy',
-                'bot_token_set': BOT_TOKEN != 'dummy_token',
-                'webhook_url': f'{WEBHOOK_URL}/webhook'
+                'bot_token_set': self.bot_token != 'dummy_token',
+                'webhook_url': f'{self.webhook_url}/webhook'
             }
             
             self.wfile.write(json.dumps(health_data, ensure_ascii=False).encode('utf-8'))
@@ -209,6 +301,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         """Обработка обновления от Telegram"""
         try:
             telegram_api = TelegramAPI(BOT_TOKEN)
+            openai_api = OpenAIAPI(OPENAI_API_KEY)
             
             # Обработка сообщений
             if 'message' in update_data:
@@ -221,48 +314,65 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     
                     # Обработка команд
                     if text == '/start':
+                        ai_status = "🧠 ИИ активен" if openai_api.is_available() else "⚠️ ИИ недоступен (базовые ответы)"
                         response = (
                             "🤖 <b>Добро пожаловать в UMBB GPT Bot!</b>\n\n"
-                            "Я готов помочь вам с различными задачами.\n\n"
+                            "Я готов помочь вам с различными задачами с использованием искусственного интеллекта.\n\n"
                             "<b>Доступные команды:</b>\n"
                             "• /start - Начать работу\n"
                             "• /help - Получить помощь\n\n"
-                            "Просто отправьте мне любое сообщение, и я отвечу!"
+                            "<b>Возможности:</b>\n"
+                            "🧠 Умные ответы с помощью GPT\n"
+                            "🔍 Анализ изображений\n"
+                            "💬 Естественное общение\n\n"
+                            f"<b>Статус ИИ:</b> {ai_status}"
                         )
                     elif text == '/help':
+                        ai_status = "🧠 ИИ активен" if openai_api.is_available() else "⚠️ ИИ недоступен"
                         response = (
                             "🆘 <b>Помощь по использованию бота</b>\n\n"
                             "<b>Команды:</b>\n"
                             "• /start - Приветствие и начало работы\n"
                             "• /help - Эта справка\n\n"
                             "<b>Возможности:</b>\n"
-                            "• Отвечаю на текстовые сообщения\n"
-                            "• Обрабатываю фотографии\n"
-                            "• Работаю через webhook на Render\n\n"
-                            "<b>Статус:</b> ✅ Онлайн и готов к работе!"
+                            "🧠 Генерация умных ответов с помощью GPT-3.5\n"
+                            "🔍 Анализ и описание изображений\n"
+                            "💬 Естественное общение на русском языке\n"
+                            "🌐 Работа через webhook на Render\n\n"
+                            f"<b>Статус ИИ:</b> {ai_status}\n"
+                            "<b>Статус бота:</b> ✅ Онлайн и готов к работе!"
                         )
                     else:
-                        # Обработка обычных сообщений
-                        responses = [
-                            f"🤖 Получил ваше сообщение: '{text}'",
-                            f"📝 Вы написали: {text}\n\nСпасибо за сообщение!",
-                            f"💬 Отвечаю на '{text}': Интересное сообщение!",
-                            f"🎯 Сообщение '{text}' обработано успешно!",
-                            f"✨ Ваш текст '{text}' принят к обработке!"
-                        ]
-                        import random
-                        response = random.choice(responses)
+                        # Генерация ответа с помощью ИИ
+                        logger.info(f"🧠 Генерация ответа для: {text}")
+                        response = openai_api.generate_text_response(text)
                     
                     telegram_api.send_message(chat_id, response)
                 
                 elif 'photo' in message:
                     logger.info(f"📸 Получено фото от {chat_id}")
-                    response = (
-                        "📸 <b>Фотография получена!</b>\n\n"
-                        "Спасибо за отправленное изображение. "
-                        "В данный момент я могу только подтвердить получение фото.\n\n"
-                        "🔄 <i>Функция анализа изображений будет добавлена в будущих версиях.</i>"
-                    )
+                    
+                    # Получаем самое большое фото
+                    photo = message['photo'][-1]  # Последнее фото - самое большое
+                    file_id = photo['file_id']
+                    
+                    # Получаем URL файла через Telegram API
+                    try:
+                        file_info = self.get_file_info(file_id)
+                        if file_info and 'file_path' in file_info:
+                            file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info['file_path']}"
+                            
+                            # Анализируем изображение с помощью ИИ
+                            caption = message.get('caption', 'Опиши это изображение подробно')
+                            logger.info(f"🔍 Анализ изображения: {caption}")
+                            
+                            response = openai_api.analyze_image(file_url, caption)
+                        else:
+                            response = "❌ Не удалось получить изображение для анализа."
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка получения файла: {e}")
+                        response = "❌ Произошла ошибка при обработке изображения."
+                    
                     telegram_api.send_message(chat_id, response)
                 
                 else:
@@ -279,6 +389,31 @@ class WebhookHandler(BaseHTTPRequestHandler):
         
         except Exception as e:
             logger.error(f"❌ Ошибка обработки обновления: {e}")
+    
+    def get_file_info(self, file_id):
+        """Получение информации о файле от Telegram API"""
+        if BOT_TOKEN == 'dummy_token':
+            logger.warning(f"🤖 Dummy mode: would get file info for {file_id}")
+            return None
+        
+        url = f'https://api.telegram.org/bot{BOT_TOKEN}/getFile'
+        data = {'file_id': file_id}
+        
+        try:
+            data_encoded = urllib.parse.urlencode(data).encode('utf-8')
+            req = urllib.request.Request(url, data=data_encoded, method='POST')
+            req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                if result.get('ok'):
+                    return result.get('result')
+                else:
+                    logger.error(f"❌ Ошибка получения файла: {result}")
+                    return None
+        except Exception as e:
+            logger.error(f"❌ Ошибка запроса файла: {e}")
+            return None
 
 def setup_webhook():
     """Настройка webhook"""
