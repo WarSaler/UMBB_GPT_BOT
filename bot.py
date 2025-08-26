@@ -19,15 +19,32 @@ import sys
 from datetime import datetime
 import base64
 
-# Импорт OpenAI (опционально)
+# Автоматическая установка и импорт OpenAI
 try:
     import openai
     OPENAI_AVAILABLE = True
     print(f"✅ OpenAI успешно импортирован. Версия: {openai.__version__}")
 except ImportError as e:
-    OPENAI_AVAILABLE = False
     print(f"❌ OpenAI не установлен: {e}")
-    print("⚠️ Используются базовые ответы.")
+    print("🔄 Попытка автоматической установки OpenAI...")
+    try:
+        import subprocess
+        import sys
+        result = subprocess.run([sys.executable, '-m', 'pip', 'install', 'openai>=1.0.0'], 
+                              capture_output=True, text=True, timeout=60)
+        if result.returncode == 0:
+            print("✅ OpenAI успешно установлен!")
+            import openai
+            OPENAI_AVAILABLE = True
+            print(f"✅ OpenAI импортирован. Версия: {openai.__version__}")
+        else:
+            print(f"❌ Ошибка установки OpenAI: {result.stderr}")
+            OPENAI_AVAILABLE = False
+            print("⚠️ Используются базовые ответы.")
+    except Exception as install_error:
+        print(f"❌ Критическая ошибка установки OpenAI: {install_error}")
+        OPENAI_AVAILABLE = False
+        print("⚠️ Используются базовые ответы.")
 except Exception as e:
     OPENAI_AVAILABLE = False
     print(f"❌ Ошибка импорта OpenAI: {e}")
